@@ -29,10 +29,10 @@ jobs:
           export GOPATH=$HOME/go
           export PATH=$GOPATH/bin:$PATH
           make apidiff-build
+          cd ../${{ github.head_ref }}
           echo ::endgroup::
           
           echo ::group::Comparing apidiff states
-          cd ../${{ github.head_ref }}
           make apidiff-compare-GA input_dir="../${{ github.base_ref }}/internal/data/apidiff"
           echo ::endgroup::
 
