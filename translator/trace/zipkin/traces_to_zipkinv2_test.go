@@ -35,30 +35,30 @@ func TestInternalTracesToZipkinSpans(t *testing.T) {
 	}{
 		{
 			name: "empty",
-			td:   testdata.GenerateTraceDataEmpty(),
+			td:   pdata.NewTraces(),
 			err:  nil,
 		},
 		{
 			name: "oneEmpty",
-			td:   testdata.GenerateTraceDataOneEmptyResourceSpans(),
+			td:   testdata.GenerateTracesOneEmptyResourceSpans(),
 			zs:   make([]*zipkinmodel.SpanModel, 0),
 			err:  nil,
 		},
 		{
 			name: "noLibs",
-			td:   testdata.GenerateTraceDataNoLibraries(),
+			td:   testdata.GenerateTracesNoLibraries(),
 			zs:   make([]*zipkinmodel.SpanModel, 0),
 			err:  nil,
 		},
 		{
 			name: "oneEmptyLib",
-			td:   testdata.GenerateTraceDataOneEmptyInstrumentationLibrary(),
+			td:   testdata.GenerateTracesOneEmptyInstrumentationLibrary(),
 			zs:   make([]*zipkinmodel.SpanModel, 0),
 			err:  nil,
 		},
 		{
 			name: "oneSpanNoResrouce",
-			td:   testdata.GenerateTraceDataOneSpanNoResource(),
+			td:   testdata.GenerateTracesOneSpanNoResource(),
 			zs:   make([]*zipkinmodel.SpanModel, 0),
 			err:  errors.New("TraceID is invalid"),
 		},
@@ -96,11 +96,44 @@ func TestInternalTracesToZipkinSpansAndBack(t *testing.T) {
 		assert.NoError(t, zErr, zipkinSpans)
 		assert.NotNil(t, tdFromZS)
 		assert.Equal(t, td.SpanCount(), tdFromZS.SpanCount())
+
+		// check that all timestamps converted back and forth without change
+		for i := 0; i < td.ResourceSpans().Len(); i++ {
+			instSpans := td.ResourceSpans().At(i).InstrumentationLibrarySpans()
+			for j := 0; j < instSpans.Len(); j++ {
+				spans := instSpans.At(j).Spans()
+				for k := 0; k < spans.Len(); k++ {
+					span := spans.At(k)
+
+					// search for the span with the same id to compare to
+					spanFromZS := findSpanByID(tdFromZS.ResourceSpans(), span.SpanID())
+
+					assert.Equal(t, span.StartTimestamp().AsTime().UnixNano(), spanFromZS.StartTimestamp().AsTime().UnixNano())
+					assert.Equal(t, span.EndTimestamp().AsTime().UnixNano(), spanFromZS.EndTimestamp().AsTime().UnixNano())
+				}
+			}
+		}
 	}
 }
 
+func findSpanByID(rs pdata.ResourceSpansSlice, spanID pdata.SpanID) *pdata.Span {
+	for i := 0; i < rs.Len(); i++ {
+		instSpans := rs.At(i).InstrumentationLibrarySpans()
+		for j := 0; j < instSpans.Len(); j++ {
+			spans := instSpans.At(j).Spans()
+			for k := 0; k < spans.Len(); k++ {
+				span := spans.At(k)
+				if span.SpanID() == spanID {
+					return &span
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func generateTraceOneSpanOneTraceID() pdata.Traces {
-	td := testdata.GenerateTraceDataOneSpan()
+	td := testdata.GenerateTracesOneSpan()
 	span := td.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0).Spans().At(0)
 	span.SetTraceID(pdata.NewTraceID([16]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 		0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10}))

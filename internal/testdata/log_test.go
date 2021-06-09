@@ -21,56 +21,51 @@ import (
 
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/internal"
-	otlplogs "go.opentelemetry.io/collector/internal/data/protogen/logs/v1"
+	otlpcollectorlog "go.opentelemetry.io/collector/internal/data/protogen/collector/logs/v1"
 )
 
 type logTestCase struct {
 	name string
 	ld   pdata.Logs
-	otlp []*otlplogs.ResourceLogs
+	otlp *otlpcollectorlog.ExportLogsServiceRequest
 }
 
 func generateAllLogTestCases() []logTestCase {
 	return []logTestCase{
 		{
-			name: "empty",
-			ld:   GenerateLogDataEmpty(),
-			otlp: generateLogOtlpEmpty(),
-		},
-		{
 			name: "one-empty-resource-logs",
-			ld:   GenerateLogDataOneEmptyResourceLogs(),
-			otlp: generateLogOtlpOneEmptyResourceLogs(),
+			ld:   GenerateLogsOneEmptyResourceLogs(),
+			otlp: generateLogsOtlpOneEmptyResourceLogs(),
 		},
 		{
 			name: "no-log-records",
-			ld:   GenerateLogDataNoLogRecords(),
+			ld:   GenerateLogsNoLogRecords(),
 			otlp: generateLogOtlpNoLogRecords(),
 		},
 		{
 			name: "one-empty-log-record",
-			ld:   GenerateLogDataOneEmptyLogs(),
-			otlp: generateLogOtlpOneEmptyLogs(),
+			ld:   GenerateLogsOneEmptyLogRecord(),
+			otlp: generateLogsOtlpOneEmptyLogRecord(),
 		},
 		{
 			name: "one-log-record-no-resource",
-			ld:   GenerateLogDataOneLogNoResource(),
-			otlp: generateLogOtlpOneLogNoResource(),
+			ld:   GenerateLogsOneLogRecordNoResource(),
+			otlp: generateLogsOtlpOneLogRecordNoResource(),
 		},
 		{
 			name: "one-log-record",
-			ld:   GenerateLogDataOneLog(),
-			otlp: generateLogOtlpOneLog(),
+			ld:   GenerateLogsOneLogRecord(),
+			otlp: generateLogsOtlpOneLogRecord(),
 		},
 		{
 			name: "two-records-same-resource",
-			ld:   GenerateLogDataTwoLogsSameResource(),
-			otlp: GenerateLogOtlpSameResourceTwoLogs(),
+			ld:   GenerateLogsTwoLogRecordsSameResource(),
+			otlp: generateLogsOtlpTwoLogRecordsSameResource(),
 		},
 		{
 			name: "two-records-same-resource-one-different",
-			ld:   GenerateLogDataTwoLogsSameResourceOneDifferent(),
-			otlp: generateLogOtlpTwoLogsSameResourceOneDifferent(),
+			ld:   GenerateLogsTwoLogRecordsSameResourceOneDifferent(),
+			otlp: generateLogsOtlpTwoLogRecordsSameResourceOneDifferent(),
 		},
 	}
 }

@@ -20,9 +20,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/internal/processor/filterconfig"
@@ -53,17 +53,13 @@ func runIndividualTestCase(t *testing.T, tt testCase, tp component.TracesProcess
 
 func generateTraceData(serviceName, spanName string, attrs map[string]pdata.AttributeValue) pdata.Traces {
 	td := pdata.NewTraces()
-	td.ResourceSpans().Resize(1)
-	rs := td.ResourceSpans().At(0)
+	rs := td.ResourceSpans().AppendEmpty()
 	if serviceName != "" {
 		rs.Resource().Attributes().UpsertString(conventions.AttributeServiceName, serviceName)
 	}
-	rs.InstrumentationLibrarySpans().Resize(1)
-	ils := rs.InstrumentationLibrarySpans().At(0)
-	spans := ils.Spans()
-	spans.Resize(1)
-	spans.At(0).SetName(spanName)
-	spans.At(0).Attributes().InitFromMap(attrs).Sort()
+	span := rs.InstrumentationLibrarySpans().AppendEmpty().Spans().AppendEmpty()
+	span.SetName(spanName)
+	span.Attributes().InitFromMap(attrs).Sort()
 	return td
 }
 
@@ -93,23 +89,23 @@ func TestSpanProcessor_NilEmptyData(t *testing.T) {
 	testCases := []nilEmptyTestCase{
 		{
 			name:   "empty",
-			input:  testdata.GenerateTraceDataEmpty(),
-			output: testdata.GenerateTraceDataEmpty(),
+			input:  pdata.NewTraces(),
+			output: pdata.NewTraces(),
 		},
 		{
 			name:   "one-empty-resource-spans",
-			input:  testdata.GenerateTraceDataOneEmptyResourceSpans(),
-			output: testdata.GenerateTraceDataOneEmptyResourceSpans(),
+			input:  testdata.GenerateTracesOneEmptyResourceSpans(),
+			output: testdata.GenerateTracesOneEmptyResourceSpans(),
 		},
 		{
 			name:   "no-libraries",
-			input:  testdata.GenerateTraceDataNoLibraries(),
-			output: testdata.GenerateTraceDataNoLibraries(),
+			input:  testdata.GenerateTracesNoLibraries(),
+			output: testdata.GenerateTracesNoLibraries(),
 		},
 		{
 			name:   "one-empty-instrumentation-library",
-			input:  testdata.GenerateTraceDataOneEmptyInstrumentationLibrary(),
-			output: testdata.GenerateTraceDataOneEmptyInstrumentationLibrary(),
+			input:  testdata.GenerateTracesOneEmptyInstrumentationLibrary(),
+			output: testdata.GenerateTracesOneEmptyInstrumentationLibrary(),
 		},
 	}
 	factory := NewFactory()
@@ -120,7 +116,7 @@ func TestSpanProcessor_NilEmptyData(t *testing.T) {
 		{Key: "attribute1", Action: processorhelper.DELETE},
 	}
 
-	tp, err := factory.CreateTracesProcessor(context.Background(), component.ProcessorCreateParams{Logger: zap.NewNop()}, oCfg, consumertest.NewTracesNop())
+	tp, err := factory.CreateTracesProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), oCfg, consumertest.NewNop())
 	require.Nil(t, err)
 	require.NotNil(t, tp)
 	for i := range testCases {
@@ -187,7 +183,7 @@ func TestAttributes_FilterSpans(t *testing.T) {
 		},
 		Config: *createConfig(filterset.Strict),
 	}
-	tp, err := factory.CreateTracesProcessor(context.Background(), component.ProcessorCreateParams{}, cfg, consumertest.NewTracesNop())
+	tp, err := factory.CreateTracesProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), cfg, consumertest.NewNop())
 	require.Nil(t, err)
 	require.NotNil(t, tp)
 
@@ -255,7 +251,7 @@ func TestAttributes_FilterSpansByNameStrict(t *testing.T) {
 		SpanNames: []string{"dont_apply"},
 		Config:    *createConfig(filterset.Strict),
 	}
-	tp, err := factory.CreateTracesProcessor(context.Background(), component.ProcessorCreateParams{}, cfg, consumertest.NewTracesNop())
+	tp, err := factory.CreateTracesProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), cfg, consumertest.NewNop())
 	require.Nil(t, err)
 	require.NotNil(t, tp)
 
@@ -323,7 +319,7 @@ func TestAttributes_FilterSpansByNameRegexp(t *testing.T) {
 		SpanNames: []string{".*dont_apply$"},
 		Config:    *createConfig(filterset.Regexp),
 	}
-	tp, err := factory.CreateTracesProcessor(context.Background(), component.ProcessorCreateParams{}, cfg, consumertest.NewTracesNop())
+	tp, err := factory.CreateTracesProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), cfg, consumertest.NewNop())
 	require.Nil(t, err)
 	require.NotNil(t, tp)
 
@@ -382,7 +378,7 @@ func TestAttributes_Hash(t *testing.T) {
 		{Key: "user.authenticated", Action: processorhelper.HASH},
 	}
 
-	tp, err := factory.CreateTracesProcessor(context.Background(), component.ProcessorCreateParams{}, cfg, consumertest.NewTracesNop())
+	tp, err := factory.CreateTracesProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), cfg, consumertest.NewNop())
 	require.Nil(t, err)
 	require.NotNil(t, tp)
 
@@ -426,7 +422,7 @@ func BenchmarkAttributes_FilterSpansByName(b *testing.B) {
 	oCfg.Include = &filterconfig.MatchProperties{
 		SpanNames: []string{"^apply.*"},
 	}
-	tp, err := factory.CreateTracesProcessor(context.Background(), component.ProcessorCreateParams{}, cfg, consumertest.NewTracesNop())
+	tp, err := factory.CreateTracesProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), cfg, consumertest.NewNop())
 	require.Nil(b, err)
 	require.NotNil(b, tp)
 

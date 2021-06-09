@@ -21,16 +21,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configtelemetry"
 	"go.opentelemetry.io/collector/obsreport"
 	"go.opentelemetry.io/collector/obsreport/obsreporttest"
 )
 
 const (
-	exporter  = "fakeExporter"
-	receiver  = "fakeReicever"
 	transport = "fakeTransport"
 	format    = "fakeFormat"
+)
+
+var (
+	receiver = config.NewID("fakeReicever")
+	exporter = config.NewID("fakeExporter")
 )
 
 func TestCheckReceiverTracesViews(t *testing.T) {
@@ -39,15 +43,16 @@ func TestCheckReceiverTracesViews(t *testing.T) {
 	defer doneFn()
 
 	receiverCtx := obsreport.ReceiverContext(context.Background(), receiver, transport)
-	ctx := obsreport.StartTraceDataReceiveOp(receiverCtx, receiver, transport)
+	rec := obsreport.NewReceiver(obsreport.ReceiverSettings{ReceiverID: receiver, Transport: transport})
+	ctx := rec.StartTracesOp(receiverCtx)
 	assert.NotNil(t, ctx)
-	obsreport.EndTraceDataReceiveOp(
+	rec.EndTracesOp(
 		ctx,
 		format,
 		7,
 		nil)
 
-	obsreporttest.CheckReceiverTracesViews(t, receiver, transport, 7, 0)
+	obsreporttest.CheckReceiverTraces(t, receiver, transport, 7, 0)
 }
 
 func TestCheckReceiverMetricsViews(t *testing.T) {
@@ -56,11 +61,12 @@ func TestCheckReceiverMetricsViews(t *testing.T) {
 	defer doneFn()
 
 	receiverCtx := obsreport.ReceiverContext(context.Background(), receiver, transport)
-	ctx := obsreport.StartMetricsReceiveOp(receiverCtx, receiver, transport)
+	rec := obsreport.NewReceiver(obsreport.ReceiverSettings{ReceiverID: receiver, Transport: transport})
+	ctx := rec.StartMetricsOp(receiverCtx)
 	assert.NotNil(t, ctx)
-	obsreport.EndMetricsReceiveOp(ctx, format, 7, nil)
+	rec.EndMetricsOp(ctx, format, 7, nil)
 
-	obsreporttest.CheckReceiverMetricsViews(t, receiver, transport, 7, 0)
+	obsreporttest.CheckReceiverMetrics(t, receiver, transport, 7, 0)
 }
 
 func TestCheckReceiverLogsViews(t *testing.T) {
@@ -69,11 +75,12 @@ func TestCheckReceiverLogsViews(t *testing.T) {
 	defer doneFn()
 
 	receiverCtx := obsreport.ReceiverContext(context.Background(), receiver, transport)
-	ctx := obsreport.StartLogsReceiveOp(receiverCtx, receiver, transport)
+	rec := obsreport.NewReceiver(obsreport.ReceiverSettings{ReceiverID: receiver, Transport: transport})
+	ctx := rec.StartLogsOp(receiverCtx)
 	assert.NotNil(t, ctx)
-	obsreport.EndLogsReceiveOp(ctx, format, 7, nil)
+	rec.EndLogsOp(ctx, format, 7, nil)
 
-	obsreporttest.CheckReceiverLogsViews(t, receiver, transport, 7, 0)
+	obsreporttest.CheckReceiverLogs(t, receiver, transport, 7, 0)
 }
 
 func TestCheckExporterTracesViews(t *testing.T) {
@@ -81,14 +88,16 @@ func TestCheckExporterTracesViews(t *testing.T) {
 	require.NoError(t, err)
 	defer doneFn()
 
-	obsrep := obsreport.NewExporterObsReport(configtelemetry.LevelNormal, exporter)
-	exporterCtx := obsreport.ExporterContext(context.Background(), exporter)
-	ctx := obsrep.StartTracesExportOp(exporterCtx)
+	obsrep := obsreport.NewExporter(obsreport.ExporterSettings{
+		Level:      configtelemetry.LevelNormal,
+		ExporterID: exporter,
+	})
+	ctx := obsrep.StartTracesOp(context.Background())
 	assert.NotNil(t, ctx)
 
-	obsrep.EndTracesExportOp(ctx, 7, nil)
+	obsrep.EndTracesOp(ctx, 7, nil)
 
-	obsreporttest.CheckExporterTracesViews(t, exporter, 7, 0)
+	obsreporttest.CheckExporterTraces(t, exporter, 7, 0)
 }
 
 func TestCheckExporterMetricsViews(t *testing.T) {
@@ -96,14 +105,16 @@ func TestCheckExporterMetricsViews(t *testing.T) {
 	require.NoError(t, err)
 	defer doneFn()
 
-	obsrep := obsreport.NewExporterObsReport(configtelemetry.LevelNormal, exporter)
-	exporterCtx := obsreport.ExporterContext(context.Background(), exporter)
-	ctx := obsrep.StartMetricsExportOp(exporterCtx)
+	obsrep := obsreport.NewExporter(obsreport.ExporterSettings{
+		Level:      configtelemetry.LevelNormal,
+		ExporterID: exporter,
+	})
+	ctx := obsrep.StartMetricsOp(context.Background())
 	assert.NotNil(t, ctx)
 
-	obsrep.EndMetricsExportOp(ctx, 7, nil)
+	obsrep.EndMetricsOp(ctx, 7, nil)
 
-	obsreporttest.CheckExporterMetricsViews(t, exporter, 7, 0)
+	obsreporttest.CheckExporterMetrics(t, exporter, 7, 0)
 }
 
 func TestCheckExporterLogsViews(t *testing.T) {
@@ -111,11 +122,13 @@ func TestCheckExporterLogsViews(t *testing.T) {
 	require.NoError(t, err)
 	defer doneFn()
 
-	obsrep := obsreport.NewExporterObsReport(configtelemetry.LevelNormal, exporter)
-	exporterCtx := obsreport.ExporterContext(context.Background(), exporter)
-	ctx := obsrep.StartLogsExportOp(exporterCtx)
+	obsrep := obsreport.NewExporter(obsreport.ExporterSettings{
+		Level:      configtelemetry.LevelNormal,
+		ExporterID: exporter,
+	})
+	ctx := obsrep.StartLogsOp(context.Background())
 	assert.NotNil(t, ctx)
-	obsrep.EndLogsExportOp(ctx, 7, nil)
+	obsrep.EndLogsOp(ctx, 7, nil)
 
-	obsreporttest.CheckExporterLogsViews(t, exporter, 7, 0)
+	obsreporttest.CheckExporterLogs(t, exporter, 7, 0)
 }

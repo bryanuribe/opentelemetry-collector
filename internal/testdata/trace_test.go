@@ -19,58 +19,53 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	otlptrace "go.opentelemetry.io/collector/internal/data/protogen/trace/v1"
-
 	"go.opentelemetry.io/collector/consumer/pdata"
+	"go.opentelemetry.io/collector/internal"
+	otlpcollectortrace "go.opentelemetry.io/collector/internal/data/protogen/collector/trace/v1"
 )
 
 type traceTestCase struct {
 	name string
 	td   pdata.Traces
-	otlp []*otlptrace.ResourceSpans
+	otlp *otlpcollectortrace.ExportTraceServiceRequest
 }
 
 func generateAllTraceTestCases() []traceTestCase {
 	return []traceTestCase{
 		{
-			name: "empty",
-			td:   GenerateTraceDataEmpty(),
-			otlp: generateTraceOtlpEmpty(),
-		},
-		{
 			name: "one-empty-resource-spans",
-			td:   GenerateTraceDataOneEmptyResourceSpans(),
-			otlp: generateTraceOtlpOneEmptyResourceSpans(),
+			td:   GenerateTracesOneEmptyResourceSpans(),
+			otlp: generateTracesOtlpOneEmptyResourceSpans(),
 		},
 		{
 			name: "no-libraries",
-			td:   GenerateTraceDataNoLibraries(),
-			otlp: generateTraceOtlpNoLibraries(),
+			td:   GenerateTracesNoLibraries(),
+			otlp: generateTracesOtlpNoLibraries(),
 		},
 		{
 			name: "one-empty-instrumentation-library",
-			td:   GenerateTraceDataOneEmptyInstrumentationLibrary(),
-			otlp: generateTraceOtlpOneEmptyInstrumentationLibrary(),
+			td:   GenerateTracesOneEmptyInstrumentationLibrary(),
+			otlp: generateTracesOtlpOneEmptyInstrumentationLibrary(),
 		},
 		{
 			name: "one-span-no-resource",
-			td:   GenerateTraceDataOneSpanNoResource(),
-			otlp: generateTraceOtlpOneSpanNoResource(),
+			td:   GenerateTracesOneSpanNoResource(),
+			otlp: generateTracesOtlpOneSpanNoResource(),
 		},
 		{
 			name: "one-span",
-			td:   GenerateTraceDataOneSpan(),
-			otlp: generateTraceOtlpOneSpan(),
+			td:   GenerateTracesOneSpan(),
+			otlp: generateTracesOtlpOneSpan(),
 		},
 		{
 			name: "two-spans-same-resource",
-			td:   GenerateTraceDataTwoSpansSameResource(),
-			otlp: GenerateTraceOtlpSameResourceTwoSpans(),
+			td:   GenerateTracesTwoSpansSameResource(),
+			otlp: generateTracesOtlpSameResourceTwoSpans(),
 		},
 		{
 			name: "two-spans-same-resource-one-different",
-			td:   GenerateTraceDataTwoSpansSameResourceOneDifferent(),
-			otlp: generateTraceOtlpTwoSpansSameResourceOneDifferent(),
+			td:   GenerateTracesTwoSpansSameResourceOneDifferent(),
+			otlp: generateTracesOtlpTwoSpansSameResourceOneDifferent(),
 		},
 	}
 }
@@ -81,9 +76,9 @@ func TestToFromOtlpTrace(t *testing.T) {
 	for i := range allTestCases {
 		test := allTestCases[i]
 		t.Run(test.name, func(t *testing.T) {
-			td := pdata.TracesFromOtlp(test.otlp)
+			td := pdata.TracesFromInternalRep(internal.TracesFromOtlp(test.otlp))
 			assert.EqualValues(t, test.td, td)
-			otlp := pdata.TracesToOtlp(td)
+			otlp := internal.TracesToOtlp(td.InternalRep())
 			assert.EqualValues(t, test.otlp, otlp)
 		})
 	}

@@ -20,65 +20,61 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"go.opentelemetry.io/collector/consumer/pdata"
-	otlpmetrics "go.opentelemetry.io/collector/internal/data/protogen/metrics/v1"
+	"go.opentelemetry.io/collector/internal"
+	otlpcollectormetrics "go.opentelemetry.io/collector/internal/data/protogen/collector/metrics/v1"
 )
 
 type traceMetricsCase struct {
 	name string
-	td   pdata.Metrics
-	otlp []*otlpmetrics.ResourceMetrics
+	md   pdata.Metrics
+	otlp *otlpcollectormetrics.ExportMetricsServiceRequest
 }
 
 func generateAllMetricsTestCases() []traceMetricsCase {
 	return []traceMetricsCase{
 		{
-			name: "empty",
-			td:   GenerateMetricsEmpty(),
-			otlp: generateMetricsOtlpEmpty(),
-		},
-		{
 			name: "one-empty-resource-metrics",
-			td:   GenerateMetricsOneEmptyResourceMetrics(),
+			md:   GenerateMetricsOneEmptyResourceMetrics(),
 			otlp: generateMetricsOtlpOneEmptyResourceMetrics(),
 		},
 		{
 			name: "no-libraries",
-			td:   GenerateMetricsNoLibraries(),
+			md:   GenerateMetricsNoLibraries(),
 			otlp: generateMetricsOtlpNoLibraries(),
 		},
 		{
 			name: "one-empty-instrumentation-library",
-			td:   GenerateMetricsOneEmptyInstrumentationLibrary(),
+			md:   GenerateMetricsOneEmptyInstrumentationLibrary(),
 			otlp: generateMetricsOtlpOneEmptyInstrumentationLibrary(),
 		},
 		{
 			name: "one-metric-no-resource",
-			td:   GenerateMetricsOneMetricNoResource(),
+			md:   GenerateMetricsOneMetricNoResource(),
 			otlp: generateMetricsOtlpOneMetricNoResource(),
 		},
 		{
 			name: "one-metric",
-			td:   GenerateMetricsOneMetric(),
+			md:   GenerateMetricsOneMetric(),
 			otlp: generateMetricsOtlpOneMetric(),
 		},
 		{
 			name: "two-metrics",
-			td:   GenerateMetricsTwoMetrics(),
-			otlp: GenerateMetricsOtlpTwoMetrics(),
+			md:   GenerateMetricsTwoMetrics(),
+			otlp: generateMetricsOtlpTwoMetrics(),
 		},
 		{
 			name: "one-metric-no-labels",
-			td:   GenerateMetricsOneMetricNoLabels(),
+			md:   GenerateMetricsOneMetricNoLabels(),
 			otlp: generateMetricsOtlpOneMetricNoLabels(),
 		},
 		{
 			name: "all-types-no-data-points",
-			td:   GenerateMetricsAllTypesNoDataPoints(),
+			md:   GenerateMetricsAllTypesNoDataPoints(),
 			otlp: generateMetricsOtlpAllTypesNoDataPoints(),
 		},
 		{
 			name: "all-metric-types",
-			td:   GeneratMetricsAllTypesWithSampleDatapoints(),
+			md:   GeneratMetricsAllTypesWithSampleDatapoints(),
 			otlp: generateMetricsOtlpAllTypesWithSampleDatapoints(),
 		},
 	}
@@ -90,9 +86,9 @@ func TestToFromOtlpMetrics(t *testing.T) {
 	for i := range allTestCases {
 		test := allTestCases[i]
 		t.Run(test.name, func(t *testing.T) {
-			td := pdata.MetricsFromOtlp(test.otlp)
-			assert.EqualValues(t, test.td, td)
-			otlp := pdata.MetricsToOtlp(td)
+			td := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(test.otlp))
+			assert.EqualValues(t, test.md, td)
+			otlp := internal.MetricsToOtlp(td.InternalRep())
 			assert.EqualValues(t, test.otlp, otlp)
 		})
 	}

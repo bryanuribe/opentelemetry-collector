@@ -15,203 +15,121 @@ package fileexporter
 
 import (
 	"context"
+	"errors"
+	"io/ioutil"
+	"os"
 	"testing"
-	"time"
 
-	"github.com/gogo/protobuf/jsonpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"go.opentelemetry.io/collector/consumer/pdata"
-	"go.opentelemetry.io/collector/internal"
-	collectorlogs "go.opentelemetry.io/collector/internal/data/protogen/collector/logs/v1"
-	collectormetrics "go.opentelemetry.io/collector/internal/data/protogen/collector/metrics/v1"
-	collectortrace "go.opentelemetry.io/collector/internal/data/protogen/collector/trace/v1"
-	otlpcommon "go.opentelemetry.io/collector/internal/data/protogen/common/v1"
-	logspb "go.opentelemetry.io/collector/internal/data/protogen/logs/v1"
-	otresourcepb "go.opentelemetry.io/collector/internal/data/protogen/resource/v1"
+	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/internal/otlp"
 	"go.opentelemetry.io/collector/internal/testdata"
-	"go.opentelemetry.io/collector/testutil"
 )
 
-func TestFileTraceExporterNoErrors(t *testing.T) {
-	mf := &testutil.LimitedWriter{}
-	lte := &fileExporter{file: mf}
-	require.NotNil(t, lte)
+func TestFileTracesExporter(t *testing.T) {
+	fe := &fileExporter{path: tempFileName(t)}
+	require.NotNil(t, fe)
 
-	td := testdata.GenerateTraceDataTwoSpansSameResource()
+	td := testdata.GenerateTracesTwoSpansSameResource()
+	assert.NoError(t, fe.Start(context.Background(), componenttest.NewNopHost()))
+	assert.NoError(t, fe.ConsumeTraces(context.Background(), td))
+	assert.NoError(t, fe.Shutdown(context.Background()))
 
-	assert.NoError(t, lte.ConsumeTraces(context.Background(), td))
-	assert.NoError(t, lte.Shutdown(context.Background()))
-
-	var unmarshaler = &jsonpb.Unmarshaler{}
-	var j collectortrace.ExportTraceServiceRequest
-	assert.NoError(t, unmarshaler.Unmarshal(mf, &j))
-
-	assert.EqualValues(t, pdata.TracesToOtlp(td), j.ResourceSpans)
+	unmarshaler := otlp.NewJSONTracesUnmarshaler()
+	buf, err := ioutil.ReadFile(fe.path)
+	assert.NoError(t, err)
+	got, err := unmarshaler.Unmarshal(buf)
+	assert.NoError(t, err)
+	assert.EqualValues(t, td, got)
 }
 
-func TestFileMetricsExporterNoErrors(t *testing.T) {
-	mf := &testutil.LimitedWriter{}
-	lme := &fileExporter{file: mf}
-	require.NotNil(t, lme)
+func TestFileTracesExporterError(t *testing.T) {
+	mf := &errorWriter{}
+	fe := &fileExporter{file: mf}
+	require.NotNil(t, fe)
+
+	td := testdata.GenerateTracesTwoSpansSameResource()
+	// Cannot call Start since we inject directly the WriterCloser.
+	assert.Error(t, fe.ConsumeTraces(context.Background(), td))
+	assert.NoError(t, fe.Shutdown(context.Background()))
+}
+
+func TestFileMetricsExporter(t *testing.T) {
+	fe := &fileExporter{path: tempFileName(t)}
+	require.NotNil(t, fe)
 
 	md := testdata.GenerateMetricsTwoMetrics()
-	assert.NoError(t, lme.ConsumeMetrics(context.Background(), md))
-	assert.NoError(t, lme.Shutdown(context.Background()))
+	assert.NoError(t, fe.Start(context.Background(), componenttest.NewNopHost()))
+	assert.NoError(t, fe.ConsumeMetrics(context.Background(), md))
+	assert.NoError(t, fe.Shutdown(context.Background()))
 
-	var unmarshaler = &jsonpb.Unmarshaler{}
-	var j collectormetrics.ExportMetricsServiceRequest
-	assert.NoError(t, unmarshaler.Unmarshal(mf, &j))
-
-	assert.EqualValues(t, pdata.MetricsToOtlp(md), j.ResourceMetrics)
+	unmarshaler := otlp.NewJSONMetricsUnmarshaler()
+	buf, err := ioutil.ReadFile(fe.path)
+	assert.NoError(t, err)
+	got, err := unmarshaler.Unmarshal(buf)
+	assert.NoError(t, err)
+	assert.EqualValues(t, md, got)
 }
 
-func TestFileLogsExporterNoErrors(t *testing.T) {
-	mf := &testutil.LimitedWriter{}
-	exporter := &fileExporter{file: mf}
-	require.NotNil(t, exporter)
+func TestFileMetricsExporterError(t *testing.T) {
+	mf := &errorWriter{}
+	fe := &fileExporter{file: mf}
+	require.NotNil(t, fe)
 
-	now := time.Now()
-	ld := []*logspb.ResourceLogs{
-		{
-			Resource: otresourcepb.Resource{
-				Attributes: []otlpcommon.KeyValue{
-					{
-						Key:   "attr1",
-						Value: otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_StringValue{StringValue: "value1"}},
-					},
-				},
-			},
-			InstrumentationLibraryLogs: []*logspb.InstrumentationLibraryLogs{
-				{
-					Logs: []*logspb.LogRecord{
-						{
-							TimeUnixNano: uint64(now.UnixNano()),
-							Name:         "logA",
-						},
-						{
-							TimeUnixNano: uint64(now.UnixNano()),
-							Name:         "logB",
-						},
-					},
-				},
-			},
-		},
-		{
-			Resource: otresourcepb.Resource{
-				Attributes: []otlpcommon.KeyValue{
-					{
-						Key:   "attr2",
-						Value: otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_StringValue{StringValue: "value2"}},
-					},
-				},
-			},
-			InstrumentationLibraryLogs: []*logspb.InstrumentationLibraryLogs{
-				{
-					Logs: []*logspb.LogRecord{
-						{
-							TimeUnixNano: uint64(now.UnixNano()),
-							Name:         "logC",
-						},
-					},
-				},
-			},
-		},
-	}
-	assert.NoError(t, exporter.ConsumeLogs(context.Background(), pdata.LogsFromInternalRep(internal.LogsFromOtlp(ld))))
-	assert.NoError(t, exporter.Shutdown(context.Background()))
+	md := testdata.GenerateMetricsTwoMetrics()
+	// Cannot call Start since we inject directly the WriterCloser.
+	assert.Error(t, fe.ConsumeMetrics(context.Background(), md))
+	assert.NoError(t, fe.Shutdown(context.Background()))
+}
 
-	var unmarshaler = &jsonpb.Unmarshaler{}
-	var j collectorlogs.ExportLogsServiceRequest
+func TestFileLogsExporter(t *testing.T) {
+	fe := &fileExporter{path: tempFileName(t)}
+	require.NotNil(t, fe)
 
-	assert.NoError(t, unmarshaler.Unmarshal(mf, &j))
-	assert.EqualValues(t, ld, j.ResourceLogs)
+	ld := testdata.GenerateLogsTwoLogRecordsSameResource()
+	assert.NoError(t, fe.Start(context.Background(), componenttest.NewNopHost()))
+	assert.NoError(t, fe.ConsumeLogs(context.Background(), ld))
+	assert.NoError(t, fe.Shutdown(context.Background()))
+
+	unmarshaler := otlp.NewJSONLogsUnmarshaler()
+	buf, err := ioutil.ReadFile(fe.path)
+	assert.NoError(t, err)
+	got, err := unmarshaler.Unmarshal(buf)
+	assert.NoError(t, err)
+	assert.EqualValues(t, ld, got)
 }
 
 func TestFileLogsExporterErrors(t *testing.T) {
+	mf := &errorWriter{}
+	fe := &fileExporter{file: mf}
+	require.NotNil(t, fe)
 
-	now := time.Now()
-	ld := []*logspb.ResourceLogs{
-		{
-			Resource: otresourcepb.Resource{
-				Attributes: []otlpcommon.KeyValue{
-					{
-						Key:   "attr1",
-						Value: otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_StringValue{StringValue: "value1"}},
-					},
-				},
-			},
-			InstrumentationLibraryLogs: []*logspb.InstrumentationLibraryLogs{
-				{
-					Logs: []*logspb.LogRecord{
-						{
-							TimeUnixNano: uint64(now.UnixNano()),
-							Name:         "logA",
-						},
-						{
-							TimeUnixNano: uint64(now.UnixNano()),
-							Name:         "logB",
-						},
-					},
-				},
-			},
-		},
-		{
-			Resource: otresourcepb.Resource{
-				Attributes: []otlpcommon.KeyValue{
-					{
-						Key:   "attr2",
-						Value: otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_StringValue{StringValue: "value2"}},
-					},
-				},
-			},
-			InstrumentationLibraryLogs: []*logspb.InstrumentationLibraryLogs{
-				{
-					Logs: []*logspb.LogRecord{
-						{
-							TimeUnixNano: uint64(now.UnixNano()),
-							Name:         "logC",
-						},
-					},
-				},
-			},
-		},
-	}
+	ld := testdata.GenerateLogsTwoLogRecordsSameResource()
+	// Cannot call Start since we inject directly the WriterCloser.
+	assert.Error(t, fe.ConsumeLogs(context.Background(), ld))
+	assert.NoError(t, fe.Shutdown(context.Background()))
+}
 
-	cases := []struct {
-		Name   string
-		MaxLen int
-	}{
-		{
-			Name:   "opening",
-			MaxLen: 1,
-		},
-		{
-			Name:   "resource",
-			MaxLen: 16,
-		},
-		{
-			Name:   "log_start",
-			MaxLen: 78,
-		},
-		{
-			Name:   "logs",
-			MaxLen: 128,
-		},
-	}
+// tempFileName provides a temporary file name for testing.
+func tempFileName(t *testing.T) string {
+	tmpfile, err := ioutil.TempFile("", "*.json")
+	require.NoError(t, err)
+	require.NoError(t, tmpfile.Close())
+	socket := tmpfile.Name()
+	require.NoError(t, os.Remove(socket))
+	return socket
+}
 
-	for i := range cases {
-		maxLen := cases[i].MaxLen
-		t.Run(cases[i].Name, func(t *testing.T) {
-			mf := &testutil.LimitedWriter{
-				MaxLen: maxLen,
-			}
-			exporter := &fileExporter{file: mf}
-			require.NotNil(t, exporter)
+// errorWriter is an io.Writer that will return an error all ways
+type errorWriter struct {
+}
 
-			assert.Error(t, exporter.ConsumeLogs(context.Background(), pdata.LogsFromInternalRep(internal.LogsFromOtlp(ld))))
-			assert.NoError(t, exporter.Shutdown(context.Background()))
-		})
-	}
+func (e errorWriter) Write([]byte) (n int, err error) {
+	return 0, errors.New("all ways return error")
+}
+
+func (e *errorWriter) Close() error {
+	return nil
 }

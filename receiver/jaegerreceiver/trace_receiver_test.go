@@ -43,27 +43,34 @@ import (
 	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configtls"
+	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/consumer/pdata"
+	"go.opentelemetry.io/collector/obsreport"
 	"go.opentelemetry.io/collector/testutil"
 	"go.opentelemetry.io/collector/translator/conventions"
 	tracetranslator "go.opentelemetry.io/collector/translator/trace"
 	"go.opentelemetry.io/collector/translator/trace/jaeger"
 )
 
-const jaegerReceiver = "jaeger_receiver_test"
+var jaegerReceiver = config.NewIDWithName("jaeger", "receiver_test")
 
 func TestTraceSource(t *testing.T) {
-	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
-	jr := newJaegerReceiver(jaegerReceiver, &configuration{}, nil, params)
+	set := componenttest.NewNopReceiverCreateSettings()
+	jr := newJaegerReceiver(jaegerReceiver, &configuration{}, nil, set)
 	require.NotNil(t, jr)
 }
 
 type traceConsumer struct {
 	cb func(context.Context, pdata.Traces)
+}
+
+func (t traceConsumer) Capabilities() consumer.Capabilities {
+	return consumer.Capabilities{MutatesData: false}
 }
 
 func (t traceConsumer) ConsumeTraces(ctx context.Context, td pdata.Traces) error {
@@ -103,6 +110,8 @@ func TestClientIPDetection(t *testing.T) {
 				ch <- ctx
 			},
 		},
+		grpcObsrecv: obsreport.NewReceiver(obsreport.ReceiverSettings{}),
+		httpObsrecv: obsreport.NewReceiver(obsreport.ReceiverSettings{}),
 	}
 	batch := &jaegerthrift.Batch{
 		Process: jaegerthrift.NewProcess(),
@@ -130,19 +139,18 @@ func TestReception(t *testing.T) {
 	port := testutil.GetAvailablePort(t)
 	// 1. Create the Jaeger receiver aka "server"
 	config := &configuration{
-		CollectorHTTPPort: int(port), // that's the only one used by this test
+		CollectorHTTPPort: int(port),
+		CollectorHTTPSettings: confighttp.HTTPServerSettings{
+			Endpoint: fmt.Sprintf(":%d", port),
+		},
 	}
 	sink := new(consumertest.TracesSink)
 
-	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
-	jr := newJaegerReceiver(jaegerReceiver, config, sink, params)
-	defer jr.Shutdown(context.Background())
-
-	t.Log("Starting")
+	set := componenttest.NewNopReceiverCreateSettings()
+	jr := newJaegerReceiver(jaegerReceiver, config, sink, set)
 
 	require.NoError(t, jr.Start(context.Background(), componenttest.NewNopHost()))
-
-	t.Log("Start")
+	t.Cleanup(func() { require.NoError(t, jr.Shutdown(context.Background())) })
 
 	// 2. Then send spans to the Jaeger receiver.
 	collectorAddr := fmt.Sprintf("http://localhost:%d/api/traces", port)
@@ -167,11 +175,11 @@ func TestPortsNotOpen(t *testing.T) {
 
 	sink := new(consumertest.TracesSink)
 
-	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
-	jr := newJaegerReceiver(jaegerReceiver, config, sink, params)
-	defer jr.Shutdown(context.Background())
+	set := componenttest.NewNopReceiverCreateSettings()
+	jr := newJaegerReceiver(jaegerReceiver, config, sink, set)
 
 	require.NoError(t, jr.Start(context.Background(), componenttest.NewNopHost()))
+	t.Cleanup(func() { require.NoError(t, jr.Shutdown(context.Background())) })
 
 	// there is a race condition here that we're ignoring.
 	//  this test may occasionally pass incorrectly, but it will not fail incorrectly
@@ -196,11 +204,11 @@ func TestGRPCReception(t *testing.T) {
 	}
 	sink := new(consumertest.TracesSink)
 
-	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
-	jr := newJaegerReceiver(jaegerReceiver, config, sink, params)
-	defer jr.Shutdown(context.Background())
+	set := componenttest.NewNopReceiverCreateSettings()
+	jr := newJaegerReceiver(jaegerReceiver, config, sink, set)
 
 	require.NoError(t, jr.Start(context.Background(), componenttest.NewNopHost()))
+	t.Cleanup(func() { require.NoError(t, jr.Shutdown(context.Background())) })
 
 	conn, err := grpc.Dial(fmt.Sprintf("0.0.0.0:%d", config.CollectorGRPCPort), grpc.WithInsecure())
 	require.NoError(t, err)
@@ -233,30 +241,29 @@ func TestGRPCReception(t *testing.T) {
 
 func TestGRPCReceptionWithTLS(t *testing.T) {
 	// prepare
-	var grpcServerOptions []grpc.ServerOption
-	tlsCreds := configtls.TLSServerSetting{
+	tlsCreds := &configtls.TLSServerSetting{
 		TLSSetting: configtls.TLSSetting{
 			CertFile: path.Join(".", "testdata", "server.crt"),
 			KeyFile:  path.Join(".", "testdata", "server.key"),
 		},
 	}
 
-	tlsCfg, err := tlsCreds.LoadTLSConfig()
-	assert.NoError(t, err)
-	grpcServerOptions = append(grpcServerOptions, grpc.Creds(credentials.NewTLS(tlsCfg)))
+	grpcServerSettings := configgrpc.GRPCServerSettings{
+		TLSSetting: tlsCreds,
+	}
 
 	port := testutil.GetAvailablePort(t)
 	config := &configuration{
-		CollectorGRPCPort:    int(port),
-		CollectorGRPCOptions: grpcServerOptions,
+		CollectorGRPCPort:           int(port),
+		CollectorGRPCServerSettings: grpcServerSettings,
 	}
 	sink := new(consumertest.TracesSink)
 
-	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
-	jr := newJaegerReceiver(jaegerReceiver, config, sink, params)
-	defer jr.Shutdown(context.Background())
+	set := componenttest.NewNopReceiverCreateSettings()
+	jr := newJaegerReceiver(jaegerReceiver, config, sink, set)
 
 	require.NoError(t, jr.Start(context.Background(), componenttest.NewNopHost()))
+	t.Cleanup(func() { require.NoError(t, jr.Shutdown(context.Background())) })
 
 	creds, err := credentials.NewClientTLSFromFile(path.Join(".", "testdata", "server.crt"), "localhost")
 	require.NoError(t, err)
@@ -295,31 +302,29 @@ func expectedTraceData(t1, t2, t3 time.Time) pdata.Traces {
 	childSpanID := pdata.NewSpanID([8]byte{0xAF, 0xAE, 0xAD, 0xAC, 0xAB, 0xAA, 0xA9, 0xA8})
 
 	traces := pdata.NewTraces()
-	traces.ResourceSpans().Resize(1)
-	rs := traces.ResourceSpans().At(0)
+	rs := traces.ResourceSpans().AppendEmpty()
 	rs.Resource().Attributes().InsertString(conventions.AttributeServiceName, "issaTest")
 	rs.Resource().Attributes().InsertBool("bool", true)
 	rs.Resource().Attributes().InsertString("string", "yes")
 	rs.Resource().Attributes().InsertInt("int64", 10000000)
-	rs.InstrumentationLibrarySpans().Resize(1)
-	rs.InstrumentationLibrarySpans().At(0).Spans().Resize(2)
+	spans := rs.InstrumentationLibrarySpans().AppendEmpty().Spans()
 
-	span0 := rs.InstrumentationLibrarySpans().At(0).Spans().At(0)
+	span0 := spans.AppendEmpty()
 	span0.SetSpanID(childSpanID)
 	span0.SetParentSpanID(parentSpanID)
 	span0.SetTraceID(traceID)
 	span0.SetName("DBSearch")
-	span0.SetStartTime(pdata.TimestampFromTime(t1))
-	span0.SetEndTime(pdata.TimestampFromTime(t2))
+	span0.SetStartTimestamp(pdata.TimestampFromTime(t1))
+	span0.SetEndTimestamp(pdata.TimestampFromTime(t2))
 	span0.Status().SetCode(pdata.StatusCodeError)
 	span0.Status().SetMessage("Stale indices")
 
-	span1 := rs.InstrumentationLibrarySpans().At(0).Spans().At(1)
+	span1 := spans.AppendEmpty()
 	span1.SetSpanID(parentSpanID)
 	span1.SetTraceID(traceID)
 	span1.SetName("ProxyFetch")
-	span1.SetStartTime(pdata.TimestampFromTime(t2))
-	span1.SetEndTime(pdata.TimestampFromTime(t3))
+	span1.SetStartTimestamp(pdata.TimestampFromTime(t2))
+	span1.SetEndTimestamp(pdata.TimestampFromTime(t3))
 	span1.Status().SetCode(pdata.StatusCodeError)
 	span1.Status().SetMessage("Frontend crash")
 
@@ -328,7 +333,7 @@ func expectedTraceData(t1, t2, t3 time.Time) pdata.Traces {
 
 func grpcFixture(t1 time.Time, d1, d2 time.Duration) *api_v2.PostSpansRequest {
 	traceID := model.TraceID{}
-	traceID.Unmarshal([]byte{0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF, 0x80})
+	traceID.Unmarshal([]byte{0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF, 0x80}) // nolint:errcheck
 	parentSpanID := model.NewSpanID(binary.BigEndian.Uint64([]byte{0x1F, 0x1E, 0x1D, 0x1C, 0x1B, 0x1A, 0x19, 0x18}))
 	childSpanID := model.NewSpanID(binary.BigEndian.Uint64([]byte{0xAF, 0xAE, 0xAD, 0xAC, 0xAB, 0xAA, 0xA9, 0xA8}))
 
@@ -387,12 +392,11 @@ func TestSampling(t *testing.T) {
 	}
 	sink := new(consumertest.TracesSink)
 
-	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
-	jr := newJaegerReceiver(jaegerReceiver, config, sink, params)
-	defer jr.Shutdown(context.Background())
+	set := componenttest.NewNopReceiverCreateSettings()
+	jr := newJaegerReceiver(jaegerReceiver, config, sink, set)
 
 	require.NoError(t, jr.Start(context.Background(), componenttest.NewNopHost()))
-	t.Log("Start")
+	t.Cleanup(func() { require.NoError(t, jr.Shutdown(context.Background())) })
 
 	conn, err := grpc.Dial(fmt.Sprintf("localhost:%d", config.CollectorGRPCPort), grpc.WithInsecure())
 	assert.NoError(t, err)
@@ -439,12 +443,11 @@ func TestSamplingFailsOnNotConfigured(t *testing.T) {
 	}
 	sink := new(consumertest.TracesSink)
 
-	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
-	jr := newJaegerReceiver(jaegerReceiver, config, sink, params)
-	defer jr.Shutdown(context.Background())
+	set := componenttest.NewNopReceiverCreateSettings()
+	jr := newJaegerReceiver(jaegerReceiver, config, sink, set)
 
 	require.NoError(t, jr.Start(context.Background(), componenttest.NewNopHost()))
-	t.Log("Start")
+	t.Cleanup(func() { require.NoError(t, jr.Shutdown(context.Background())) })
 
 	conn, err := grpc.Dial(fmt.Sprintf("localhost:%d", config.CollectorGRPCPort), grpc.WithInsecure())
 	assert.NoError(t, err)
@@ -468,10 +471,10 @@ func TestSamplingFailsOnBadFile(t *testing.T) {
 	}
 	sink := new(consumertest.TracesSink)
 
-	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
-	jr := newJaegerReceiver(jaegerReceiver, config, sink, params)
-	defer jr.Shutdown(context.Background())
+	set := componenttest.NewNopReceiverCreateSettings()
+	jr := newJaegerReceiver(jaegerReceiver, config, sink, set)
 	assert.Error(t, jr.Start(context.Background(), componenttest.NewNopHost()))
+	t.Cleanup(func() { require.NoError(t, jr.Shutdown(context.Background())) })
 }
 
 func TestSamplingStrategiesMutualTLS(t *testing.T) {
@@ -527,14 +530,11 @@ func TestSamplingStrategiesMutualTLS(t *testing.T) {
 	cfg.Protocols.ThriftHTTP = &confighttp.HTTPServerSettings{
 		Endpoint: fmt.Sprintf("localhost:%d", thriftHTTPPort),
 	}
-	exp, err := factory.CreateTracesReceiver(context.Background(), component.ReceiverCreateParams{Logger: zap.NewNop()}, cfg, consumertest.NewTracesNop())
+	exp, err := factory.CreateTracesReceiver(context.Background(), componenttest.NewNopReceiverCreateSettings(), cfg, consumertest.NewNop())
 	require.NoError(t, err)
-	host := &componenttest.ErrorWaitingHost{}
-	err = exp.Start(context.Background(), host)
-	require.NoError(t, err)
-	defer exp.Shutdown(context.Background())
-	_, err = host.WaitForFatalError(200 * time.Millisecond)
-	require.NoError(t, err)
+	require.NoError(t, exp.Start(context.Background(), newAssertNoErrorHost(t)))
+	t.Cleanup(func() { require.NoError(t, exp.Shutdown(context.Background())) })
+	<-time.After(200 * time.Millisecond)
 
 	resp, err := http.Get(fmt.Sprintf("http://%s?service=bar", hostEndpoint))
 	require.NoError(t, err)
@@ -557,7 +557,7 @@ func TestConsumeThriftTrace(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		numSpans, err := consumeTraces(context.Background(), test.batch, consumertest.NewTracesNop())
+		numSpans, err := consumeTraces(context.Background(), test.batch, consumertest.NewNop())
 		require.NoError(t, err)
 		assert.Equal(t, test.numSpans, numSpans)
 	}
@@ -579,11 +579,32 @@ func sendToCollector(endpoint string, batch *jaegerthrift.Batch) error {
 		return err
 	}
 
-	io.Copy(ioutil.Discard, resp.Body)
+	_, err = io.Copy(ioutil.Discard, resp.Body)
+	if err != nil {
+		return err
+	}
 	resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("failed to upload traces; HTTP status code: %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// assertNoErrorHost implements a component.Host that asserts that there were no errors.
+type assertNoErrorHost struct {
+	component.Host
+	*testing.T
+}
+
+// newAssertNoErrorHost returns a new instance of assertNoErrorHost.
+func newAssertNoErrorHost(t *testing.T) component.Host {
+	return &assertNoErrorHost{
+		Host: componenttest.NewNopHost(),
+		T:    t,
+	}
+}
+
+func (aneh *assertNoErrorHost) ReportFatalError(err error) {
+	assert.NoError(aneh, err)
 }

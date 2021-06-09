@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config/configmodels"
+	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configtest"
 	"go.opentelemetry.io/collector/internal/processor/filterset"
 	"go.opentelemetry.io/collector/receiver/hostmetricsreceiver/internal"
@@ -40,19 +40,19 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
-	factories, err := componenttest.ExampleComponents()
+	factories, err := componenttest.NopFactories()
 	require.NoError(t, err)
 
 	factory := NewFactory()
 	factories.Receivers[typeStr] = factory
-	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
+	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
 
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
 	assert.Equal(t, len(cfg.Receivers), 2)
 
-	r0 := cfg.Receivers["hostmetrics"]
+	r0 := cfg.Receivers[config.NewID(typeStr)]
 	defaultConfigCPUScraper := factory.CreateDefaultConfig()
 	defaultConfigCPUScraper.(*Config).Scrapers = map[string]internal.Config{
 		cpuscraper.TypeStr: (&cpuscraper.Factory{}).CreateDefaultConfig(),
@@ -60,13 +60,10 @@ func TestLoadConfig(t *testing.T) {
 
 	assert.Equal(t, defaultConfigCPUScraper, r0)
 
-	r1 := cfg.Receivers["hostmetrics/customname"].(*Config)
+	r1 := cfg.Receivers[config.NewIDWithName(typeStr, "customname")].(*Config)
 	expectedConfig := &Config{
 		ScraperControllerSettings: scraperhelper.ScraperControllerSettings{
-			ReceiverSettings: configmodels.ReceiverSettings{
-				TypeVal: typeStr,
-				NameVal: "hostmetrics/customname",
-			},
+			ReceiverSettings:   config.NewReceiverSettings(config.NewIDWithName(typeStr, "customname")),
 			CollectionInterval: 30 * time.Second,
 		},
 		Scrapers: map[string]internal.Config{
@@ -96,23 +93,23 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func TestLoadInvalidConfig_NoScrapers(t *testing.T) {
-	factories, err := componenttest.ExampleComponents()
+	factories, err := componenttest.NopFactories()
 	require.NoError(t, err)
 
 	factory := NewFactory()
 	factories.Receivers[typeStr] = factory
-	_, err = configtest.LoadConfigFile(t, path.Join(".", "testdata", "config-noscrapers.yaml"), factories)
+	_, err = configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config-noscrapers.yaml"), factories)
 
-	require.EqualError(t, err, "error reading receivers configuration for hostmetrics: must specify at least one scraper when using hostmetrics receiver")
+	require.EqualError(t, err, "receiver \"hostmetrics\" has invalid configuration: must specify at least one scraper when using hostmetrics receiver")
 }
 
 func TestLoadInvalidConfig_InvalidScraperKey(t *testing.T) {
-	factories, err := componenttest.ExampleComponents()
+	factories, err := componenttest.NopFactories()
 	require.NoError(t, err)
 
 	factory := NewFactory()
 	factories.Receivers[typeStr] = factory
-	_, err = configtest.LoadConfigFile(t, path.Join(".", "testdata", "config-invalidscraperkey.yaml"), factories)
+	_, err = configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config-invalidscraperkey.yaml"), factories)
 
 	require.EqualError(t, err, "error reading receivers configuration for hostmetrics: invalid scraper key: invalidscraperkey")
 }

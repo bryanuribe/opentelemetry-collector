@@ -21,12 +21,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
 
-	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configcheck"
-	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 )
@@ -35,17 +33,14 @@ func TestType(t *testing.T) {
 	factory := NewFactory()
 	pType := factory.Type()
 
-	assert.Equal(t, pType, configmodels.Type("filter"))
+	assert.Equal(t, pType, config.Type("filter"))
 }
 
 func TestCreateDefaultConfig(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
 	assert.Equal(t, cfg, &Config{
-		ProcessorSettings: configmodels.ProcessorSettings{
-			NameVal: typeStr,
-			TypeVal: typeStr,
-		},
+		ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
 	})
 	assert.NoError(t, configcheck.ValidateConfig(cfg))
 }
@@ -68,24 +63,24 @@ func TestCreateProcessors(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		factories, err := componenttest.ExampleComponents()
+		factories, err := componenttest.NopFactories()
 		assert.Nil(t, err)
 
 		factory := NewFactory()
 		factories.Processors[typeStr] = factory
-		cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", test.configName), factories)
+		cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", test.configName), factories)
 		assert.Nil(t, err)
 
 		for name, cfg := range cfg.Processors {
 			t.Run(fmt.Sprintf("%s/%s", test.configName, name), func(t *testing.T) {
 				factory := NewFactory()
 
-				tp, tErr := factory.CreateTracesProcessor(context.Background(), component.ProcessorCreateParams{Logger: zap.NewNop()}, cfg, consumertest.NewTracesNop())
+				tp, tErr := factory.CreateTracesProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), cfg, consumertest.NewNop())
 				// Not implemented error
 				assert.NotNil(t, tErr)
 				assert.Nil(t, tp)
 
-				mp, mErr := factory.CreateMetricsProcessor(context.Background(), component.ProcessorCreateParams{Logger: zap.NewNop()}, cfg, consumertest.NewMetricsNop())
+				mp, mErr := factory.CreateMetricsProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), cfg, consumertest.NewNop())
 				assert.Equal(t, test.succeed, mp != nil)
 				assert.Equal(t, test.succeed, mErr == nil)
 			})
