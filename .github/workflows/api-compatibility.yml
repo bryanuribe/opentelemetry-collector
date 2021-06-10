@@ -29,6 +29,10 @@ jobs:
           export GOPATH=$HOME/go
           export PATH=$GOPATH/bin:$PATH
           make apidiff-build
+          mkdir test
+          cd ../${{ github.head_ref }}
+          cd ../${{ github.base_ref }}
+          ls
           cd ../${{ github.head_ref }}
           echo ::endgroup::
           
