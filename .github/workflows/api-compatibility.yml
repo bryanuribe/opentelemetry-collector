@@ -24,16 +24,20 @@ jobs:
       - name: Generate-Compare-Check-apidiff
         run: |
           echo ::group::Generating apidiff states
+          ls
           cd ${{ github.base_ref }}
           make install-tools
           export GOPATH=$HOME/go
           export PATH=$GOPATH/bin:$PATH
           make apidiff-build
           mkdir test
+          ls
           cd ../${{ github.head_ref }}
+          ls
           cd ../${{ github.base_ref }}
           ls
           cd ../${{ github.head_ref }}
+          ls
           echo ::endgroup::
           
           echo ::group::Comparing apidiff states
