@@ -46,7 +46,7 @@ type MatchConfig struct {
 }
 
 // old
-type Point struct { X, Y int }
+type Point struct { X, Y, Z int }
 
 // MatchProperties specifies the set of properties in a span/log to match
 // against and if the span/log should be included or excluded from the
