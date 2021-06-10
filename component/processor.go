@@ -28,6 +28,7 @@ import (
 // and MetricsProcessor.
 type Processor interface {
 	Component
+	consumer.Traces
 }
 
 // TracesProcessor is a processor that can consume traces.
