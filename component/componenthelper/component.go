@@ -58,6 +58,7 @@ func WithShutdown(shutdownFunc ShutdownFunc) Option {
 type baseComponent struct {
 	StartFunc
 	ShutdownFunc
+	Option
 }
 
 // New returns a component.Component configured with the provided options.
