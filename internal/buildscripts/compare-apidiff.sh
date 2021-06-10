@@ -50,7 +50,7 @@ if [ -d $input_dir/$package ]; then
   changes=$(apidiff $input_dir/$package/apidiff.state $package)
   if [ ! -z "$changes" -a "$changes"!=" " ]; then
     SUB='Incompatible changes:'
-    if [$check_only = true -a [ "$changes" =~ .*"$SUB".* ]]; then
+    if [$check_only = true -a "$changes" =~ .*"$SUB".* ]; then
       changes_found
     else
       echo "Changes found in $package:"
