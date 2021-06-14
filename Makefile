@@ -366,3 +366,23 @@ certs-dryrun:
 .PHONY: checkdoc
 checkdoc:
 	go run cmd/checkdoc/main.go cmd/checkdoc/docs.go --project-path $(CURDIR) --component-rel-path $(COMP_REL_PATH) --module-name $(MOD_NAME)
+
+# Construct new API state snapshots
+.PHONY: apidiff-build
+apidiff-build:
+	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/gen-apidiff.sh -p $(pkg)))
+
+# Compare API state snapshots
+.PHONY: apidiff-compare
+apidiff-compare:
+	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg)))
+
+# Compare API state snapshots in Github Actions
+.PHONY: apidiff-compare-GA
+apidiff-compare-GA:
+	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) -d $(input_dir)))
+
+# Check no incompatible APIs for Github Actions
+.PHONY: apidiff-check
+apidiff-check:
+	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) -d $(input_dir) -c))
