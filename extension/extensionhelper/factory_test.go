@@ -16,19 +16,23 @@ package extensionhelper
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 )
 
 const typeStr = "test"
 
 var (
-	defaultCfg           = config.NewExtensionSettings(config.NewID(typeStr))
+	defaultCfg = &configmodels.ExtensionSettings{
+		TypeVal: typeStr,
+		NameVal: typeStr,
+	}
 	nopExtensionInstance = new(nopExtension)
 )
 
@@ -38,18 +42,40 @@ func TestNewFactory(t *testing.T) {
 		defaultConfig,
 		createExtension)
 	assert.EqualValues(t, typeStr, factory.Type())
-	assert.EqualValues(t, &defaultCfg, factory.CreateDefaultConfig())
-	ext, err := factory.CreateExtension(context.Background(), componenttest.NewNopExtensionCreateSettings(), &defaultCfg)
+	assert.EqualValues(t, defaultCfg, factory.CreateDefaultConfig())
+	ext, err := factory.CreateExtension(context.Background(), component.ExtensionCreateParams{}, defaultCfg)
 	assert.NoError(t, err)
 	assert.Same(t, nopExtensionInstance, ext)
 }
 
-func defaultConfig() config.Extension {
-	return &defaultCfg
+func TestNewFactory_WithConstructors(t *testing.T) {
+	factory := NewFactory(
+		typeStr,
+		defaultConfig,
+		createExtension,
+		WithCustomUnmarshaler(customUnmarshaler))
+	assert.EqualValues(t, typeStr, factory.Type())
+	assert.EqualValues(t, defaultCfg, factory.CreateDefaultConfig())
+
+	fu, ok := factory.(component.ConfigUnmarshaler)
+	assert.True(t, ok)
+	assert.Equal(t, errors.New("my error"), fu.Unmarshal(nil, nil))
+
+	ext, err := factory.CreateExtension(context.Background(), component.ExtensionCreateParams{}, defaultCfg)
+	assert.NoError(t, err)
+	assert.Same(t, nopExtensionInstance, ext)
 }
 
-func createExtension(context.Context, component.ExtensionCreateSettings, config.Extension) (component.Extension, error) {
+func defaultConfig() configmodels.Extension {
+	return defaultCfg
+}
+
+func createExtension(context.Context, component.ExtensionCreateParams, configmodels.Extension) (component.Extension, error) {
 	return nopExtensionInstance, nil
+}
+
+func customUnmarshaler(*viper.Viper, interface{}) error {
+	return errors.New("my error")
 }
 
 type nopExtension struct {

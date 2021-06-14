@@ -17,29 +17,22 @@ package testcomponents
 import (
 	"context"
 
+	"github.com/spf13/viper"
+
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/config/configparser"
-	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
-var _ config.CustomUnmarshable = (*ExampleExporter)(nil)
-
 // ExampleExporter is for testing purposes. We are defining an example config and factory
 // for "exampleexporter" exporter type.
 type ExampleExporter struct {
-	config.ExporterSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
-	ExtraInt                int32                    `mapstructure:"extra_int"`
-	ExtraSetting            string                   `mapstructure:"extra"`
-	ExtraMapSetting         map[string]string        `mapstructure:"extra_map"`
-	ExtraListSetting        []string                 `mapstructure:"extra_list"`
-}
-
-// Unmarshal a viper data into the config struct
-func (cfg *ExampleExporter) Unmarshal(componentParser *configparser.Parser) error {
-	return componentParser.UnmarshalExact(cfg)
+	configmodels.ExporterSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+	ExtraInt                      int32                    `mapstructure:"extra_int"`
+	ExtraSetting                  string                   `mapstructure:"extra"`
+	ExtraMapSetting               map[string]string        `mapstructure:"extra_map"`
+	ExtraListSetting              []string                 `mapstructure:"extra_list"`
 }
 
 const expType = "exampleexporter"
@@ -48,40 +41,48 @@ const expType = "exampleexporter"
 var ExampleExporterFactory = exporterhelper.NewFactory(
 	expType,
 	createExporterDefaultConfig,
+	exporterhelper.WithCustomUnmarshaler(customUnmarshal),
 	exporterhelper.WithTraces(createTracesExporter),
 	exporterhelper.WithMetrics(createMetricsExporter),
 	exporterhelper.WithLogs(createLogsExporter))
 
 // CreateDefaultConfig creates the default configuration for the Exporter.
-func createExporterDefaultConfig() config.Exporter {
+func createExporterDefaultConfig() configmodels.Exporter {
 	return &ExampleExporter{
-		ExporterSettings: config.NewExporterSettings(config.NewID(expType)),
+		ExporterSettings: configmodels.ExporterSettings{
+			TypeVal: expType,
+			NameVal: expType,
+		},
 		ExtraSetting:     "some export string",
 		ExtraMapSetting:  nil,
 		ExtraListSetting: nil,
 	}
 }
 
+func customUnmarshal(componentViperSection *viper.Viper, intoCfg interface{}) error {
+	return componentViperSection.UnmarshalExact(intoCfg)
+}
+
 func createTracesExporter(
 	_ context.Context,
-	_ component.ExporterCreateSettings,
-	_ config.Exporter,
+	_ component.ExporterCreateParams,
+	_ configmodels.Exporter,
 ) (component.TracesExporter, error) {
 	return &ExampleExporterConsumer{}, nil
 }
 
 func createMetricsExporter(
 	_ context.Context,
-	_ component.ExporterCreateSettings,
-	_ config.Exporter,
+	_ component.ExporterCreateParams,
+	_ configmodels.Exporter,
 ) (component.MetricsExporter, error) {
 	return &ExampleExporterConsumer{}, nil
 }
 
 func createLogsExporter(
 	_ context.Context,
-	_ component.ExporterCreateSettings,
-	_ config.Exporter,
+	_ component.ExporterCreateParams,
+	_ configmodels.Exporter,
 ) (component.LogsExporter, error) {
 	return &ExampleExporterConsumer{}, nil
 }
@@ -107,10 +108,6 @@ func (exp *ExampleExporterConsumer) Start(_ context.Context, _ component.Host) e
 func (exp *ExampleExporterConsumer) ConsumeTraces(_ context.Context, td pdata.Traces) error {
 	exp.Traces = append(exp.Traces, td)
 	return nil
-}
-
-func (exp *ExampleExporterConsumer) Capabilities() consumer.Capabilities {
-	return consumer.Capabilities{MutatesData: false}
 }
 
 // ConsumeMetrics receives pdata.Metrics for processing by the Metrics.

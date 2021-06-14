@@ -23,37 +23,41 @@ import (
 	"go.uber.org/zap"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/extension/extensionhelper"
 )
 
 func TestService_setupExtensions(t *testing.T) {
 	errExtensionFactory := extensionhelper.NewFactory(
 		"err",
-		func() config.Extension {
-			cfg := config.NewExtensionSettings(config.NewID("err"))
-			return &cfg
+		func() configmodels.Extension {
+			return &configmodels.ExporterSettings{
+				TypeVal: "err",
+			}
 		},
-		func(ctx context.Context, set component.ExtensionCreateSettings, extension config.Extension) (component.Extension, error) {
+		func(ctx context.Context, params component.ExtensionCreateParams, extension configmodels.Extension) (component.Extension, error) {
 			return nil, fmt.Errorf("cannot create \"err\" extension type")
 		},
 	)
 	errExtensionConfig := errExtensionFactory.CreateDefaultConfig()
+	errExtensionConfig.SetName(string(errExtensionFactory.Type()))
+
 	badExtensionFactory := newBadExtensionFactory()
 	badExtensionCfg := badExtensionFactory.CreateDefaultConfig()
+	badExtensionCfg.SetName(string(badExtensionFactory.Type()))
 
 	tests := []struct {
 		name       string
 		factories  component.Factories
-		config     *config.Config
+		config     *configmodels.Config
 		wantErrMsg string
 	}{
 		{
 			name: "extension_not_configured",
-			config: &config.Config{
-				Service: config.Service{
-					Extensions: []config.ComponentID{
-						config.NewID("myextension"),
+			config: &configmodels.Config{
+				Service: configmodels.Service{
+					Extensions: []string{
+						"myextension",
 					},
 				},
 			},
@@ -61,13 +65,13 @@ func TestService_setupExtensions(t *testing.T) {
 		},
 		{
 			name: "missing_extension_factory",
-			config: &config.Config{
-				Extensions: map[config.ComponentID]config.Extension{
-					config.NewID(errExtensionFactory.Type()): errExtensionConfig,
+			config: &configmodels.Config{
+				Extensions: map[string]configmodels.Extension{
+					string(errExtensionFactory.Type()): errExtensionConfig,
 				},
-				Service: config.Service{
-					Extensions: []config.ComponentID{
-						config.NewID(errExtensionFactory.Type()),
+				Service: configmodels.Service{
+					Extensions: []string{
+						string(errExtensionFactory.Type()),
 					},
 				},
 			},
@@ -76,46 +80,46 @@ func TestService_setupExtensions(t *testing.T) {
 		{
 			name: "error_on_create_extension",
 			factories: component.Factories{
-				Extensions: map[config.Type]component.ExtensionFactory{
+				Extensions: map[configmodels.Type]component.ExtensionFactory{
 					errExtensionFactory.Type(): errExtensionFactory,
 				},
 			},
-			config: &config.Config{
-				Extensions: map[config.ComponentID]config.Extension{
-					config.NewID(errExtensionFactory.Type()): errExtensionConfig,
+			config: &configmodels.Config{
+				Extensions: map[string]configmodels.Extension{
+					string(errExtensionFactory.Type()): errExtensionConfig,
 				},
-				Service: config.Service{
-					Extensions: []config.ComponentID{
-						config.NewID(errExtensionFactory.Type()),
+				Service: configmodels.Service{
+					Extensions: []string{
+						string(errExtensionFactory.Type()),
 					},
 				},
 			},
-			wantErrMsg: "failed to create extension err: cannot create \"err\" extension type",
+			wantErrMsg: "failed to create extension \"err\": cannot create \"err\" extension type",
 		},
 		{
 			name: "bad_factory",
 			factories: component.Factories{
-				Extensions: map[config.Type]component.ExtensionFactory{
+				Extensions: map[configmodels.Type]component.ExtensionFactory{
 					badExtensionFactory.Type(): badExtensionFactory,
 				},
 			},
-			config: &config.Config{
-				Extensions: map[config.ComponentID]config.Extension{
-					config.NewID(badExtensionFactory.Type()): badExtensionCfg,
+			config: &configmodels.Config{
+				Extensions: map[string]configmodels.Extension{
+					string(badExtensionFactory.Type()): badExtensionCfg,
 				},
-				Service: config.Service{
-					Extensions: []config.ComponentID{
-						config.NewID(badExtensionFactory.Type()),
+				Service: configmodels.Service{
+					Extensions: []string{
+						string(badExtensionFactory.Type()),
 					},
 				},
 			},
-			wantErrMsg: "factory for bf produced a nil extension",
+			wantErrMsg: "factory for \"bf\" produced a nil extension",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ext, err := BuildExtensions(zap.NewNop(), component.DefaultBuildInfo(), tt.config, tt.factories.Extensions)
+			ext, err := BuildExtensions(zap.NewNop(), component.DefaultApplicationStartInfo(), tt.config, tt.factories.Extensions)
 
 			assert.Error(t, err)
 			assert.Equal(t, tt.wantErrMsg, err.Error())

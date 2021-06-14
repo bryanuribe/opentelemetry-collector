@@ -24,7 +24,6 @@ import (
 	"log"
 	"os"
 	"path"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"text/template"
@@ -43,7 +42,7 @@ func run(ymlPath string) error {
 		return errors.New("argument must be metadata.yaml file")
 	}
 
-	ymlData, err := ioutil.ReadFile(filepath.Clean(ymlPath))
+	ymlData, err := ioutil.ReadFile(ymlPath)
 	if err != nil {
 		return fmt.Errorf("unable to read file %v: %v", ymlPath, err)
 	}

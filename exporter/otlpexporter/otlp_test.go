@@ -24,6 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
@@ -32,8 +33,13 @@ import (
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/consumer/pdata"
-	"go.opentelemetry.io/collector/internal/pdatagrpc"
+	"go.opentelemetry.io/collector/internal"
+	otlplogs "go.opentelemetry.io/collector/internal/data/protogen/collector/logs/v1"
+	otlpmetrics "go.opentelemetry.io/collector/internal/data/protogen/collector/metrics/v1"
+	otlptraces "go.opentelemetry.io/collector/internal/data/protogen/collector/trace/v1"
 	"go.opentelemetry.io/collector/internal/testdata"
+	"go.opentelemetry.io/collector/obsreport"
+	"go.opentelemetry.io/collector/testutil"
 )
 
 type mockReceiver struct {
@@ -50,36 +56,45 @@ func (r *mockReceiver) GetMetadata() metadata.MD {
 	return r.metadata
 }
 
-type mockTracesReceiver struct {
+type mockTraceReceiver struct {
 	mockReceiver
-	lastRequest pdata.Traces
+	lastRequest *otlptraces.ExportTraceServiceRequest
 }
 
-func (r *mockTracesReceiver) Export(ctx context.Context, td pdata.Traces) (interface{}, error) {
+func (r *mockTraceReceiver) Export(
+	ctx context.Context,
+	req *otlptraces.ExportTraceServiceRequest,
+) (*otlptraces.ExportTraceServiceResponse, error) {
 	atomic.AddInt32(&r.requestCount, 1)
-	atomic.AddInt32(&r.totalItems, int32(td.SpanCount()))
+	spanCount := 0
+	for _, rs := range req.ResourceSpans {
+		for _, ils := range rs.InstrumentationLibrarySpans {
+			spanCount += len(ils.Spans)
+		}
+	}
+	atomic.AddInt32(&r.totalItems, int32(spanCount))
 	r.mux.Lock()
 	defer r.mux.Unlock()
-	r.lastRequest = td
+	r.lastRequest = req
 	r.metadata, _ = metadata.FromIncomingContext(ctx)
-	return nil, nil
+	return &otlptraces.ExportTraceServiceResponse{}, nil
 }
 
-func (r *mockTracesReceiver) GetLastRequest() pdata.Traces {
+func (r *mockTraceReceiver) GetLastRequest() *otlptraces.ExportTraceServiceRequest {
 	r.mux.Lock()
 	defer r.mux.Unlock()
 	return r.lastRequest
 }
 
-func otlpTracesReceiverOnGRPCServer(ln net.Listener) *mockTracesReceiver {
-	rcv := &mockTracesReceiver{
+func otlpTraceReceiverOnGRPCServer(ln net.Listener) *mockTraceReceiver {
+	rcv := &mockTraceReceiver{
 		mockReceiver: mockReceiver{
-			srv: grpc.NewServer(),
+			srv: obsreport.GRPCServerWithObservabilityEnabled(),
 		},
 	}
 
 	// Now run it as a gRPC server
-	pdatagrpc.RegisterTracesServer(rcv.srv, rcv)
+	otlptraces.RegisterTraceServiceServer(rcv.srv, rcv)
 	go func() {
 		_ = rcv.srv.Serve(ln)
 	}()
@@ -89,20 +104,29 @@ func otlpTracesReceiverOnGRPCServer(ln net.Listener) *mockTracesReceiver {
 
 type mockLogsReceiver struct {
 	mockReceiver
-	lastRequest pdata.Logs
+	lastRequest *otlplogs.ExportLogsServiceRequest
 }
 
-func (r *mockLogsReceiver) Export(ctx context.Context, ld pdata.Logs) (interface{}, error) {
+func (r *mockLogsReceiver) Export(
+	ctx context.Context,
+	req *otlplogs.ExportLogsServiceRequest,
+) (*otlplogs.ExportLogsServiceResponse, error) {
 	atomic.AddInt32(&r.requestCount, 1)
-	atomic.AddInt32(&r.totalItems, int32(ld.LogRecordCount()))
+	recordCount := 0
+	for _, rs := range req.ResourceLogs {
+		for _, il := range rs.InstrumentationLibraryLogs {
+			recordCount += len(il.Logs)
+		}
+	}
+	atomic.AddInt32(&r.totalItems, int32(recordCount))
 	r.mux.Lock()
 	defer r.mux.Unlock()
-	r.lastRequest = ld
+	r.lastRequest = req
 	r.metadata, _ = metadata.FromIncomingContext(ctx)
-	return nil, nil
+	return &otlplogs.ExportLogsServiceResponse{}, nil
 }
 
-func (r *mockLogsReceiver) GetLastRequest() pdata.Logs {
+func (r *mockLogsReceiver) GetLastRequest() *otlplogs.ExportLogsServiceRequest {
 	r.mux.Lock()
 	defer r.mux.Unlock()
 	return r.lastRequest
@@ -111,12 +135,12 @@ func (r *mockLogsReceiver) GetLastRequest() pdata.Logs {
 func otlpLogsReceiverOnGRPCServer(ln net.Listener) *mockLogsReceiver {
 	rcv := &mockLogsReceiver{
 		mockReceiver: mockReceiver{
-			srv: grpc.NewServer(),
+			srv: obsreport.GRPCServerWithObservabilityEnabled(),
 		},
 	}
 
 	// Now run it as a gRPC server
-	pdatagrpc.RegisterLogsServer(rcv.srv, rcv)
+	otlplogs.RegisterLogsServiceServer(rcv.srv, rcv)
 	go func() {
 		_ = rcv.srv.Serve(ln)
 	}()
@@ -126,21 +150,24 @@ func otlpLogsReceiverOnGRPCServer(ln net.Listener) *mockLogsReceiver {
 
 type mockMetricsReceiver struct {
 	mockReceiver
-	lastRequest pdata.Metrics
+	lastRequest *otlpmetrics.ExportMetricsServiceRequest
 }
 
-func (r *mockMetricsReceiver) Export(ctx context.Context, md pdata.Metrics) (interface{}, error) {
+func (r *mockMetricsReceiver) Export(
+	ctx context.Context,
+	req *otlpmetrics.ExportMetricsServiceRequest,
+) (*otlpmetrics.ExportMetricsServiceResponse, error) {
 	atomic.AddInt32(&r.requestCount, 1)
-	_, recordCount := md.MetricAndDataPointCount()
+	_, recordCount := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(req)).MetricAndDataPointCount()
 	atomic.AddInt32(&r.totalItems, int32(recordCount))
 	r.mux.Lock()
 	defer r.mux.Unlock()
-	r.lastRequest = md
+	r.lastRequest = req
 	r.metadata, _ = metadata.FromIncomingContext(ctx)
-	return nil, nil
+	return &otlpmetrics.ExportMetricsServiceResponse{}, nil
 }
 
-func (r *mockMetricsReceiver) GetLastRequest() pdata.Metrics {
+func (r *mockMetricsReceiver) GetLastRequest() *otlpmetrics.ExportMetricsServiceRequest {
 	r.mux.Lock()
 	defer r.mux.Unlock()
 	return r.lastRequest
@@ -149,12 +176,12 @@ func (r *mockMetricsReceiver) GetLastRequest() pdata.Metrics {
 func otlpMetricsReceiverOnGRPCServer(ln net.Listener) *mockMetricsReceiver {
 	rcv := &mockMetricsReceiver{
 		mockReceiver: mockReceiver{
-			srv: grpc.NewServer(),
+			srv: obsreport.GRPCServerWithObservabilityEnabled(),
 		},
 	}
 
 	// Now run it as a gRPC server
-	pdatagrpc.RegisterMetricsServer(rcv.srv, rcv)
+	otlpmetrics.RegisterMetricsServiceServer(rcv.srv, rcv)
 	go func() {
 		_ = rcv.srv.Serve(ln)
 	}()
@@ -166,7 +193,7 @@ func TestSendTraces(t *testing.T) {
 	// Start an OTLP-compatible receiver.
 	ln, err := net.Listen("tcp", "localhost:")
 	require.NoError(t, err, "Failed to find an available address to run the gRPC server: %v", err)
-	rcv := otlpTracesReceiverOnGRPCServer(ln)
+	rcv := otlpTraceReceiverOnGRPCServer(ln)
 	// Also closes the connection.
 	defer rcv.srv.GracefulStop()
 
@@ -182,50 +209,52 @@ func TestSendTraces(t *testing.T) {
 			"header": "header-value",
 		},
 	}
-	set := componenttest.NewNopExporterCreateSettings()
-	exp, err := factory.CreateTracesExporter(context.Background(), set, cfg)
+	creationParams := component.ExporterCreateParams{Logger: zap.NewNop()}
+	exp, err := factory.CreateTracesExporter(context.Background(), creationParams, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, exp)
-
 	defer func() {
 		assert.NoError(t, exp.Shutdown(context.Background()))
 	}()
 
 	host := componenttest.NewNopHost()
+
 	assert.NoError(t, exp.Start(context.Background(), host))
 
 	// Ensure that initially there is no data in the receiver.
 	assert.EqualValues(t, 0, atomic.LoadInt32(&rcv.requestCount))
 
 	// Send empty trace.
-	td := pdata.NewTraces()
+	td := testdata.GenerateTraceDataEmpty()
 	assert.NoError(t, exp.ConsumeTraces(context.Background(), td))
 
 	// Wait until it is received.
-	assert.Eventually(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		return atomic.LoadInt32(&rcv.requestCount) > 0
-	}, 10*time.Second, 5*time.Millisecond)
+	}, "receive a request")
 
 	// Ensure it was received empty.
 	assert.EqualValues(t, 0, atomic.LoadInt32(&rcv.totalItems))
 
 	// A trace with 2 spans.
-	td = testdata.GenerateTracesTwoSpansSameResource()
+	td = testdata.GenerateTraceDataTwoSpansSameResource()
+
+	expectedOTLPReq := internal.TracesToOtlp(td.Clone().InternalRep())
 
 	err = exp.ConsumeTraces(context.Background(), td)
 	assert.NoError(t, err)
 
 	// Wait until it is received.
-	assert.Eventually(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		return atomic.LoadInt32(&rcv.requestCount) > 1
-	}, 10*time.Second, 5*time.Millisecond)
+	}, "receive a request")
 
 	expectedHeader := []string{"header-value"}
 
 	// Verify received span.
 	assert.EqualValues(t, 2, atomic.LoadInt32(&rcv.totalItems))
 	assert.EqualValues(t, 2, atomic.LoadInt32(&rcv.requestCount))
-	assert.EqualValues(t, td, rcv.GetLastRequest())
+	assert.EqualValues(t, expectedOTLPReq, rcv.GetLastRequest())
 
 	require.EqualValues(t, rcv.GetMetadata().Get("header"), expectedHeader)
 }
@@ -250,8 +279,8 @@ func TestSendMetrics(t *testing.T) {
 			"header": "header-value",
 		},
 	}
-	set := componenttest.NewNopExporterCreateSettings()
-	exp, err := factory.CreateMetricsExporter(context.Background(), set, cfg)
+	creationParams := component.ExporterCreateParams{Logger: zap.NewNop()}
+	exp, err := factory.CreateMetricsExporter(context.Background(), creationParams, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, exp)
 	defer func() {
@@ -266,13 +295,13 @@ func TestSendMetrics(t *testing.T) {
 	assert.EqualValues(t, 0, atomic.LoadInt32(&rcv.requestCount))
 
 	// Send empty trace.
-	md := pdata.NewMetrics()
+	md := testdata.GenerateMetricsEmpty()
 	assert.NoError(t, exp.ConsumeMetrics(context.Background(), md))
 
 	// Wait until it is received.
-	assert.Eventually(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		return atomic.LoadInt32(&rcv.requestCount) > 0
-	}, 10*time.Second, 5*time.Millisecond)
+	}, "receive a request")
 
 	// Ensure it was received empty.
 	assert.EqualValues(t, 0, atomic.LoadInt32(&rcv.totalItems))
@@ -280,20 +309,22 @@ func TestSendMetrics(t *testing.T) {
 	// A trace with 2 spans.
 	md = testdata.GenerateMetricsTwoMetrics()
 
+	expectedOTLPReq := internal.MetricsToOtlp(md.Clone().InternalRep())
+
 	err = exp.ConsumeMetrics(context.Background(), md)
 	assert.NoError(t, err)
 
 	// Wait until it is received.
-	assert.Eventually(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		return atomic.LoadInt32(&rcv.requestCount) > 1
-	}, 10*time.Second, 5*time.Millisecond)
+	}, "receive a request")
 
 	expectedHeader := []string{"header-value"}
 
 	// Verify received metrics.
 	assert.EqualValues(t, 2, atomic.LoadInt32(&rcv.requestCount))
 	assert.EqualValues(t, 4, atomic.LoadInt32(&rcv.totalItems))
-	assert.EqualValues(t, md, rcv.GetLastRequest())
+	assert.EqualValues(t, expectedOTLPReq, rcv.GetLastRequest())
 
 	require.EqualValues(t, rcv.GetMetadata().Get("header"), expectedHeader)
 }
@@ -318,8 +349,8 @@ func TestSendTraceDataServerDownAndUp(t *testing.T) {
 		// Do not rely on external retry logic here, if that is intended set InitialInterval to 100ms.
 		WaitForReady: true,
 	}
-	set := componenttest.NewNopExporterCreateSettings()
-	exp, err := factory.CreateTracesExporter(context.Background(), set, cfg)
+	creationParams := component.ExporterCreateParams{Logger: zap.NewNop()}
+	exp, err := factory.CreateTracesExporter(context.Background(), creationParams, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, exp)
 	defer func() {
@@ -331,7 +362,7 @@ func TestSendTraceDataServerDownAndUp(t *testing.T) {
 	assert.NoError(t, exp.Start(context.Background(), host))
 
 	// A trace with 2 spans.
-	td := testdata.GenerateTracesTwoSpansSameResource()
+	td := testdata.GenerateTraceDataTwoSpansSameResource()
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	assert.Error(t, exp.ConsumeTraces(ctx, td))
 	assert.EqualValues(t, context.DeadlineExceeded, ctx.Err())
@@ -375,8 +406,8 @@ func TestSendTraceDataServerStartWhileRequest(t *testing.T) {
 			Insecure: true,
 		},
 	}
-	set := componenttest.NewNopExporterCreateSettings()
-	exp, err := factory.CreateTracesExporter(context.Background(), set, cfg)
+	creationParams := component.ExporterCreateParams{Logger: zap.NewNop()}
+	exp, err := factory.CreateTracesExporter(context.Background(), creationParams, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, exp)
 	defer func() {
@@ -388,7 +419,7 @@ func TestSendTraceDataServerStartWhileRequest(t *testing.T) {
 	assert.NoError(t, exp.Start(context.Background(), host))
 
 	// A trace with 2 spans.
-	td := testdata.GenerateTracesTwoSpansSameResource()
+	td := testdata.GenerateTraceDataTwoSpansSameResource()
 	done := make(chan bool, 1)
 	defer close(done)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -398,7 +429,7 @@ func TestSendTraceDataServerStartWhileRequest(t *testing.T) {
 	}()
 
 	time.Sleep(2 * time.Second)
-	rcv := otlpTracesReceiverOnGRPCServer(ln)
+	rcv := otlpTraceReceiverOnGRPCServer(ln)
 	defer rcv.srv.GracefulStop()
 	// Wait until one of the conditions below triggers.
 	select {
@@ -411,13 +442,13 @@ func TestSendTraceDataServerStartWhileRequest(t *testing.T) {
 }
 
 func startServerAndMakeRequest(t *testing.T, exp component.TracesExporter, td pdata.Traces, ln net.Listener) {
-	rcv := otlpTracesReceiverOnGRPCServer(ln)
+	rcv := otlpTraceReceiverOnGRPCServer(ln)
 	defer rcv.srv.GracefulStop()
 	// Ensure that initially there is no data in the receiver.
 	assert.EqualValues(t, 0, atomic.LoadInt32(&rcv.requestCount))
 
 	// Clone the request and store as expected.
-	expectedData := td.Clone()
+	expectedOTLPReq := internal.TracesToOtlp(td.Clone().InternalRep())
 
 	// Resend the request, this should succeed.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -425,13 +456,13 @@ func startServerAndMakeRequest(t *testing.T, exp component.TracesExporter, td pd
 	cancel()
 
 	// Wait until it is received.
-	assert.Eventually(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		return atomic.LoadInt32(&rcv.requestCount) > 0
-	}, 10*time.Second, 5*time.Millisecond)
+	}, "receive a request")
 
 	// Verify received span.
 	assert.EqualValues(t, 2, atomic.LoadInt32(&rcv.totalItems))
-	assert.EqualValues(t, expectedData, rcv.GetLastRequest())
+	assert.EqualValues(t, expectedOTLPReq, rcv.GetLastRequest())
 }
 
 func TestSendLogData(t *testing.T) {
@@ -451,8 +482,8 @@ func TestSendLogData(t *testing.T) {
 			Insecure: true,
 		},
 	}
-	set := componenttest.NewNopExporterCreateSettings()
-	exp, err := factory.CreateLogsExporter(context.Background(), set, cfg)
+	creationParams := component.ExporterCreateParams{Logger: zap.NewNop()}
+	exp, err := factory.CreateLogsExporter(context.Background(), creationParams, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, exp)
 	defer func() {
@@ -467,30 +498,31 @@ func TestSendLogData(t *testing.T) {
 	assert.EqualValues(t, 0, atomic.LoadInt32(&rcv.requestCount))
 
 	// Send empty request.
-	ld := pdata.NewLogs()
-	assert.NoError(t, exp.ConsumeLogs(context.Background(), ld))
+	td := testdata.GenerateLogDataEmpty()
+	assert.NoError(t, exp.ConsumeLogs(context.Background(), td))
 
 	// Wait until it is received.
-	assert.Eventually(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		return atomic.LoadInt32(&rcv.requestCount) > 0
-	}, 10*time.Second, 5*time.Millisecond)
+	}, "receive a request")
 
 	// Ensure it was received empty.
 	assert.EqualValues(t, 0, atomic.LoadInt32(&rcv.totalItems))
 
 	// A request with 2 log entries.
-	ld = testdata.GenerateLogsTwoLogRecordsSameResource()
+	td = testdata.GenerateLogDataTwoLogsSameResource()
+	expectedOTLPReq := internal.LogsToOtlp(td.Clone().InternalRep())
 
-	err = exp.ConsumeLogs(context.Background(), ld)
+	err = exp.ConsumeLogs(context.Background(), td)
 	assert.NoError(t, err)
 
 	// Wait until it is received.
-	assert.Eventually(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		return atomic.LoadInt32(&rcv.requestCount) > 1
-	}, 10*time.Second, 5*time.Millisecond)
+	}, "receive a request")
 
 	// Verify received logs.
 	assert.EqualValues(t, 2, atomic.LoadInt32(&rcv.requestCount))
 	assert.EqualValues(t, 2, atomic.LoadInt32(&rcv.totalItems))
-	assert.EqualValues(t, ld, rcv.GetLastRequest())
+	assert.EqualValues(t, expectedOTLPReq, rcv.GetLastRequest())
 }

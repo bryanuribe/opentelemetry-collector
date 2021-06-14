@@ -18,7 +18,7 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 )
@@ -28,37 +28,40 @@ const (
 	typeStr = "memory_limiter"
 )
 
-var processorCapabilities = consumer.Capabilities{MutatesData: false}
+var processorCapabilities = component.ProcessorCapabilities{MutatesConsumedData: false}
 
 // NewFactory returns a new factory for the Memory Limiter processor.
 func NewFactory() component.ProcessorFactory {
 	return processorhelper.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		processorhelper.WithTraces(createTracesProcessor),
+		processorhelper.WithTraces(createTraceProcessor),
 		processorhelper.WithMetrics(createMetricsProcessor),
 		processorhelper.WithLogs(createLogsProcessor))
 }
 
 // CreateDefaultConfig creates the default configuration for processor. Notice
 // that the default configuration is expected to fail for this processor.
-func createDefaultConfig() config.Processor {
+func createDefaultConfig() configmodels.Processor {
 	return &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			TypeVal: typeStr,
+			NameVal: typeStr,
+		},
 	}
 }
 
-func createTracesProcessor(
+func createTraceProcessor(
 	_ context.Context,
-	set component.ProcessorCreateSettings,
-	cfg config.Processor,
+	params component.ProcessorCreateParams,
+	cfg configmodels.Processor,
 	nextConsumer consumer.Traces,
 ) (component.TracesProcessor, error) {
-	ml, err := newMemoryLimiter(set.Logger, cfg.(*Config))
+	ml, err := newMemoryLimiter(params.Logger, cfg.(*Config))
 	if err != nil {
 		return nil, err
 	}
-	return processorhelper.NewTracesProcessor(
+	return processorhelper.NewTraceProcessor(
 		cfg,
 		nextConsumer,
 		ml,
@@ -68,11 +71,11 @@ func createTracesProcessor(
 
 func createMetricsProcessor(
 	_ context.Context,
-	set component.ProcessorCreateSettings,
-	cfg config.Processor,
+	params component.ProcessorCreateParams,
+	cfg configmodels.Processor,
 	nextConsumer consumer.Metrics,
 ) (component.MetricsProcessor, error) {
-	ml, err := newMemoryLimiter(set.Logger, cfg.(*Config))
+	ml, err := newMemoryLimiter(params.Logger, cfg.(*Config))
 	if err != nil {
 		return nil, err
 	}
@@ -86,11 +89,11 @@ func createMetricsProcessor(
 
 func createLogsProcessor(
 	_ context.Context,
-	set component.ProcessorCreateSettings,
-	cfg config.Processor,
+	params component.ProcessorCreateParams,
+	cfg configmodels.Processor,
 	nextConsumer consumer.Logs,
 ) (component.LogsProcessor, error) {
-	ml, err := newMemoryLimiter(set.Logger, cfg.(*Config))
+	ml, err := newMemoryLimiter(params.Logger, cfg.(*Config))
 	if err != nil {
 		return nil, err
 	}

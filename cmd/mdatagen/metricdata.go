@@ -24,7 +24,7 @@ var (
 	_ MetricData = &intHistogram{}
 	_ MetricData = &doubleGauge{}
 	_ MetricData = &doubleSum{}
-	_ MetricData = &histogram{}
+	_ MetricData = &doubleHistogram{}
 )
 
 type ymlMetricData struct {
@@ -54,8 +54,8 @@ func (e *ymlMetricData) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		md = &doubleGauge{}
 	case "double sum":
 		md = &doubleSum{}
-	case "histogram":
-		md = &histogram{}
+	case "double histogram":
+		md = &doubleHistogram{}
 	default:
 		return fmt.Errorf("metric data %q type invalid", m.Type)
 	}
@@ -76,14 +76,12 @@ type MetricData interface {
 	HasAggregated() bool
 }
 
-// Aggregated defines a metric aggregation type.
 type Aggregated struct {
 	// Aggregation describes if the aggregator reports delta changes
 	// since last report time, or cumulative changes since a fixed start time.
 	Aggregation string `yaml:"aggregation" validate:"oneof=delta cumulative"`
 }
 
-// Type gets the metric aggregation type.
 func (agg Aggregated) Type() string {
 	switch agg.Aggregation {
 	case "delta":
@@ -95,7 +93,6 @@ func (agg Aggregated) Type() string {
 	}
 }
 
-// Mono defines the metric monotonicity.
 type Mono struct {
 	// Monotonic is true if the sum is monotonic.
 	Monotonic bool `yaml:"monotonic"`
@@ -181,18 +178,18 @@ func (i intHistogram) HasAggregated() bool {
 	return true
 }
 
-type histogram struct {
+type doubleHistogram struct {
 	Aggregated `yaml:",inline"`
 }
 
-func (d histogram) Type() string {
-	return "Histogram"
+func (d doubleHistogram) Type() string {
+	return "DoubleHistogram"
 }
 
-func (d histogram) HasMonotonic() bool {
+func (d doubleHistogram) HasMonotonic() bool {
 	return false
 }
 
-func (d histogram) HasAggregated() bool {
+func (d doubleHistogram) HasAggregated() bool {
 	return true
 }

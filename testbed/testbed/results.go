@@ -25,7 +25,7 @@ import (
 
 // TestResultsSummary defines the interface to record results of one category of testing.
 type TestResultsSummary interface {
-	// Init creates and open the file and write headers.
+	// Create and open the file and write headers.
 	Init(resultsDir string)
 	// Add results for one test.
 	Add(testName string, result interface{})
@@ -61,13 +61,11 @@ func (r *PerformanceResults) Init(resultsDir string) {
 	r.perTestResults = []*PerformanceTestResult{}
 
 	// Create resultsSummary file
-	if err := os.MkdirAll(resultsDir, os.FileMode(0755)); err != nil {
-		log.Fatal(err)
-	}
+	os.MkdirAll(resultsDir, os.FileMode(0755))
 	var err error
 	r.resultsFile, err = os.Create(path.Join(r.resultsDir, "TESTRESULTS.md"))
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf(err.Error())
 	}
 
 	// Write the header
@@ -147,13 +145,11 @@ func (r *CorrectnessResults) Init(resultsDir string) {
 	r.perTestResults = []*CorrectnessTestResult{}
 
 	// Create resultsSummary file
-	if err := os.MkdirAll(resultsDir, os.FileMode(0755)); err != nil {
-		log.Fatal(err)
-	}
+	os.MkdirAll(resultsDir, os.FileMode(0755))
 	var err error
 	r.resultsFile, err = os.Create(path.Join(r.resultsDir, "CORRECTNESSRESULTS.md"))
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf(err.Error())
 	}
 
 	// Write the header

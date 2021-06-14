@@ -22,11 +22,11 @@ import (
 	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenterror"
-	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configerror"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/receiver/prometheusreceiver"
 )
@@ -38,10 +38,13 @@ func TestDefaultReceivers(t *testing.T) {
 	rcvrFactories := allFactories.Receivers
 
 	tests := []struct {
-		receiver     config.Type
+		receiver     configmodels.Type
 		skipLifecyle bool
 		getConfigFn  getReceiverConfigFn
 	}{
+		{
+			receiver: "fluentforward",
+		},
 		{
 			receiver: "hostmetrics",
 		},
@@ -61,7 +64,7 @@ func TestDefaultReceivers(t *testing.T) {
 		},
 		{
 			receiver: "prometheus",
-			getConfigFn: func() config.Receiver {
+			getConfigFn: func() configmodels.Receiver {
 				cfg := rcvrFactories["prometheus"].CreateDefaultConfig().(*prometheusreceiver.Config)
 				cfg.PrometheusConfig = &promconfig.Config{
 					ScrapeConfigs: []*promconfig.ScrapeConfig{
@@ -82,14 +85,13 @@ func TestDefaultReceivers(t *testing.T) {
 			factory, ok := rcvrFactories[tt.receiver]
 			require.True(t, ok)
 			assert.Equal(t, tt.receiver, factory.Type())
-			assert.Equal(t, config.NewID(tt.receiver), factory.CreateDefaultConfig().ID())
+			assert.Equal(t, tt.receiver, factory.CreateDefaultConfig().Type())
 
 			if tt.skipLifecyle {
 				t.Log("Skipping lifecycle test", tt.receiver)
-				return
+			} else {
+				verifyReceiverLifecycle(t, factory, tt.getConfigFn)
 			}
-
-			verifyReceiverLifecycle(t, factory, tt.getConfigFn)
 		})
 	}
 }
@@ -97,7 +99,7 @@ func TestDefaultReceivers(t *testing.T) {
 // getReceiverConfigFn is used customize the configuration passed to the verification.
 // This is used to change ports or provide values required but not provided by the
 // default configuration.
-type getReceiverConfigFn func() config.Receiver
+type getReceiverConfigFn func() configmodels.Receiver
 
 // verifyReceiverLifecycle is used to test if a receiver type can handle the typical
 // lifecycle of a component. The getConfigFn parameter only need to be specified if
@@ -105,7 +107,10 @@ type getReceiverConfigFn func() config.Receiver
 func verifyReceiverLifecycle(t *testing.T, factory component.ReceiverFactory, getConfigFn getReceiverConfigFn) {
 	ctx := context.Background()
 	host := newAssertNoErrorHost(t)
-	receiverCreateSet := componenttest.NewNopReceiverCreateSettings()
+	receiverCreateParams := component.ReceiverCreateParams{
+		Logger:               zap.NewNop(),
+		ApplicationStartInfo: component.DefaultApplicationStartInfo(),
+	}
 
 	if getConfigFn == nil {
 		getConfigFn = factory.CreateDefaultConfig
@@ -118,15 +123,15 @@ func verifyReceiverLifecycle(t *testing.T, factory component.ReceiverFactory, ge
 	}
 
 	for _, createFn := range createFns {
-		firstRcvr, err := createFn(ctx, receiverCreateSet, getConfigFn())
-		if errors.Is(err, componenterror.ErrDataTypeIsNotSupported) {
+		firstRcvr, err := createFn(ctx, receiverCreateParams, getConfigFn())
+		if errors.Is(err, configerror.ErrDataTypeIsNotSupported) {
 			continue
 		}
 		require.NoError(t, err)
 		require.NoError(t, firstRcvr.Start(ctx, host))
 		require.NoError(t, firstRcvr.Shutdown(ctx))
 
-		secondRcvr, err := createFn(ctx, receiverCreateSet, getConfigFn())
+		secondRcvr, err := createFn(ctx, receiverCreateParams, getConfigFn())
 		require.NoError(t, err)
 		require.NoError(t, secondRcvr.Start(ctx, host))
 		require.NoError(t, secondRcvr.Shutdown(ctx))
@@ -136,24 +141,24 @@ func verifyReceiverLifecycle(t *testing.T, factory component.ReceiverFactory, ge
 // assertNoErrorHost implements a component.Host that asserts that there were no errors.
 type createReceiverFn func(
 	ctx context.Context,
-	set component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	params component.ReceiverCreateParams,
+	cfg configmodels.Receiver,
 ) (component.Receiver, error)
 
 func wrapCreateLogsRcvr(factory component.ReceiverFactory) createReceiverFn {
-	return func(ctx context.Context, set component.ReceiverCreateSettings, cfg config.Receiver) (component.Receiver, error) {
-		return factory.CreateLogsReceiver(ctx, set, cfg, consumertest.NewNop())
+	return func(ctx context.Context, params component.ReceiverCreateParams, cfg configmodels.Receiver) (component.Receiver, error) {
+		return factory.CreateLogsReceiver(ctx, params, cfg, consumertest.NewLogsNop())
 	}
 }
 
 func wrapCreateMetricsRcvr(factory component.ReceiverFactory) createReceiverFn {
-	return func(ctx context.Context, set component.ReceiverCreateSettings, cfg config.Receiver) (component.Receiver, error) {
-		return factory.CreateMetricsReceiver(ctx, set, cfg, consumertest.NewNop())
+	return func(ctx context.Context, params component.ReceiverCreateParams, cfg configmodels.Receiver) (component.Receiver, error) {
+		return factory.CreateMetricsReceiver(ctx, params, cfg, consumertest.NewMetricsNop())
 	}
 }
 
 func wrapCreateTracesRcvr(factory component.ReceiverFactory) createReceiverFn {
-	return func(ctx context.Context, set component.ReceiverCreateSettings, cfg config.Receiver) (component.Receiver, error) {
-		return factory.CreateTracesReceiver(ctx, set, cfg, consumertest.NewNop())
+	return func(ctx context.Context, params component.ReceiverCreateParams, cfg configmodels.Receiver) (component.Receiver, error) {
+		return factory.CreateTracesReceiver(ctx, params, cfg, consumertest.NewTracesNop())
 	}
 }

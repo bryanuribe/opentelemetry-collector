@@ -18,20 +18,18 @@ import (
 	"time"
 
 	occommon "github.com/census-instrumentation/opencensus-proto/gen-go/agent/common/v1"
-	agentmetricspb "github.com/census-instrumentation/opencensus-proto/gen-go/agent/metrics/v1"
 	ocmetrics "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
 	ocresource "github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"go.opentelemetry.io/collector/consumer/pdata"
-	"go.opentelemetry.io/collector/internal/occonventions"
 	"go.opentelemetry.io/collector/internal/testdata"
 	"go.opentelemetry.io/collector/translator/conventions"
 )
 
-func generateOCTestDataNoMetrics() *agentmetricspb.ExportMetricsServiceRequest {
-	return &agentmetricspb.ExportMetricsServiceRequest{
+func generateOCTestDataNoMetrics() MetricsData {
+	return MetricsData{
 		Node: &occommon.Node{},
 		Resource: &ocresource.Resource{
 			Labels: map[string]string{"resource-attr": "resource-attr-val-1"},
@@ -39,8 +37,8 @@ func generateOCTestDataNoMetrics() *agentmetricspb.ExportMetricsServiceRequest {
 	}
 }
 
-func generateOCTestDataNoPoints() *agentmetricspb.ExportMetricsServiceRequest {
-	return &agentmetricspb.ExportMetricsServiceRequest{
+func generateOCTestDataNoPoints() MetricsData {
+	return MetricsData{
 		Node: &occommon.Node{},
 		Resource: &ocresource.Resource{
 			Labels: map[string]string{"resource-attr": "resource-attr-val-1"},
@@ -106,12 +104,12 @@ func generateOCTestDataNoPoints() *agentmetricspb.ExportMetricsServiceRequest {
 	}
 }
 
-func generateOCTestDataNoLabels() *agentmetricspb.ExportMetricsServiceRequest {
+func generateOCTestDataNoLabels() MetricsData {
 	m := generateOCTestMetricInt()
 	m.MetricDescriptor.LabelKeys = nil
 	m.Timeseries[0].LabelValues = nil
 	m.Timeseries[1].LabelValues = nil
-	return &agentmetricspb.ExportMetricsServiceRequest{
+	return MetricsData{
 		Node: &occommon.Node{},
 		Resource: &ocresource.Resource{
 			Labels: map[string]string{"resource-attr": "resource-attr-val-1"},
@@ -120,8 +118,8 @@ func generateOCTestDataNoLabels() *agentmetricspb.ExportMetricsServiceRequest {
 	}
 }
 
-func generateOCTestDataMetricsOneMetric() *agentmetricspb.ExportMetricsServiceRequest {
-	return &agentmetricspb.ExportMetricsServiceRequest{
+func generateOCTestDataMetricsOneMetric() MetricsData {
+	return MetricsData{
 		Node: &occommon.Node{},
 		Resource: &ocresource.Resource{
 			Labels: map[string]string{"resource-attr": "resource-attr-val-1"},
@@ -130,8 +128,8 @@ func generateOCTestDataMetricsOneMetric() *agentmetricspb.ExportMetricsServiceRe
 	}
 }
 
-func generateOCTestDataMetricsOneMetricOneNil() *agentmetricspb.ExportMetricsServiceRequest {
-	return &agentmetricspb.ExportMetricsServiceRequest{
+func generateOCTestDataMetricsOneMetricOneNil() MetricsData {
+	return MetricsData{
 		Node: &occommon.Node{},
 		Resource: &ocresource.Resource{
 			Labels: map[string]string{"resource-attr": "resource-attr-val-1"},
@@ -140,10 +138,10 @@ func generateOCTestDataMetricsOneMetricOneNil() *agentmetricspb.ExportMetricsSer
 	}
 }
 
-func generateOCTestDataMetricsOneMetricOneNilTimeseries() *agentmetricspb.ExportMetricsServiceRequest {
+func generateOCTestDataMetricsOneMetricOneNilTimeseries() MetricsData {
 	m := generateOCTestMetricInt()
 	m.Timeseries = append(m.Timeseries, nil)
-	return &agentmetricspb.ExportMetricsServiceRequest{
+	return MetricsData{
 		Node: &occommon.Node{},
 		Resource: &ocresource.Resource{
 			Labels: map[string]string{"resource-attr": "resource-attr-val-1"},
@@ -152,10 +150,10 @@ func generateOCTestDataMetricsOneMetricOneNilTimeseries() *agentmetricspb.Export
 	}
 }
 
-func generateOCTestDataMetricsOneMetricOneNilPoint() *agentmetricspb.ExportMetricsServiceRequest {
+func generateOCTestDataMetricsOneMetricOneNilPoint() MetricsData {
 	m := generateOCTestMetricInt()
 	m.Timeseries[0].Points = append(m.Timeseries[0].Points, nil)
-	return &agentmetricspb.ExportMetricsServiceRequest{
+	return MetricsData{
 		Node: &occommon.Node{},
 		Resource: &ocresource.Resource{
 			Labels: map[string]string{"resource-attr": "resource-attr-val-1"},
@@ -498,13 +496,13 @@ func generateOCTestMetricDoubleSummary() *ocmetrics.Metric {
 func generateResourceWithOcNodeAndResource() pdata.Resource {
 	resource := pdata.NewResource()
 	resource.Attributes().InitFromMap(map[string]pdata.AttributeValue{
-		occonventions.AttributeProcessStartTime:   pdata.NewAttributeValueString("2020-02-11T20:26:00Z"),
+		conventions.OCAttributeProcessStartTime:   pdata.NewAttributeValueString("2020-02-11T20:26:00Z"),
 		conventions.AttributeHostName:             pdata.NewAttributeValueString("host1"),
 		conventions.AttributeProcessID:            pdata.NewAttributeValueInt(123),
 		conventions.AttributeTelemetrySDKVersion:  pdata.NewAttributeValueString("v2.0.1"),
-		occonventions.AttributeExporterVersion:    pdata.NewAttributeValueString("v1.2.0"),
+		conventions.OCAttributeExporterVersion:    pdata.NewAttributeValueString("v1.2.0"),
 		conventions.AttributeTelemetrySDKLanguage: pdata.NewAttributeValueString("cpp"),
-		occonventions.AttributeResourceType:       pdata.NewAttributeValueString("good-resource"),
+		conventions.OCAttributeResourceType:       pdata.NewAttributeValueString("good-resource"),
 		"node-str-attr":                           pdata.NewAttributeValueString("node-str-attr-val"),
 		"resource-str-attr":                       pdata.NewAttributeValueString("resource-str-attr-val"),
 		"resource-int-attr":                       pdata.NewAttributeValueInt(123),

@@ -18,7 +18,6 @@ import (
 	"context"
 	"sync"
 
-	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/consumer/pdata"
 )
@@ -37,10 +36,6 @@ func (esc *ErrOrSinkConsumer) SetConsumeError(err error) {
 	esc.consumeError = err
 }
 
-func (esc *ErrOrSinkConsumer) Capabilities() consumer.Capabilities {
-	return consumer.Capabilities{MutatesData: false}
-}
-
 // ConsumeTraces stores traces to this sink.
 func (esc *ErrOrSinkConsumer) ConsumeTraces(ctx context.Context, td pdata.Traces) error {
 	esc.mu.Lock()
@@ -53,7 +48,7 @@ func (esc *ErrOrSinkConsumer) ConsumeTraces(ctx context.Context, td pdata.Traces
 	return esc.TracesSink.ConsumeTraces(ctx, td)
 }
 
-// ConsumeMetrics stores metrics to this sink.
+// ConsumeTraces stores traces to this sink.
 func (esc *ErrOrSinkConsumer) ConsumeMetrics(ctx context.Context, md pdata.Metrics) error {
 	esc.mu.Lock()
 	defer esc.mu.Unlock()

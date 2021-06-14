@@ -83,10 +83,10 @@ type Factory interface {
     Type() string 
 
     // CreateDefaultConfig creates the default configuration for the extension.
-    CreateDefaultConfig() config.Extension
+    CreateDefaultConfig() configmodels.Extension
 
     // CreateExtension creates a service extension based on the given config.
-    CreateExtension(logger *zap.Logger, cfg config.Extension) (component.Extension, error)
+    CreateExtension(logger *zap.Logger, cfg configmodels.Extension) (ServiceExtension, error)
 }
 ```
 

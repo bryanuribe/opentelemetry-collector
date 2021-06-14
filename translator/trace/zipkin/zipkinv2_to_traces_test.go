@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"go.opentelemetry.io/collector/consumer/pdata"
+	"go.opentelemetry.io/collector/internal/testdata"
 	"go.opentelemetry.io/collector/translator/conventions"
 )
 
@@ -35,7 +36,13 @@ func TestZipkinSpansToInternalTraces(t *testing.T) {
 		{
 			name: "empty",
 			zs:   make([]*zipkinmodel.SpanModel, 0),
-			td:   pdata.NewTraces(),
+			td:   testdata.GenerateTraceDataEmpty(),
+			err:  nil,
+		},
+		{
+			name: "nilSpan",
+			zs:   generateNilSpan(),
+			td:   testdata.GenerateTraceDataEmpty(),
 			err:  nil,
 		},
 		{
@@ -67,6 +74,10 @@ func TestZipkinSpansToInternalTraces(t *testing.T) {
 			assert.EqualValues(t, test.td, td)
 		})
 	}
+}
+
+func generateNilSpan() []*zipkinmodel.SpanModel {
+	return make([]*zipkinmodel.SpanModel, 1)
 }
 
 func generateSpanNoEndpoints() []*zipkinmodel.SpanModel {
@@ -107,14 +118,20 @@ func generateSpanErrorTags() []*zipkinmodel.SpanModel {
 
 func generateTraceSingleSpanNoResourceOrInstrLibrary() pdata.Traces {
 	td := pdata.NewTraces()
-	span := td.ResourceSpans().AppendEmpty().InstrumentationLibrarySpans().AppendEmpty().Spans().AppendEmpty()
+	td.ResourceSpans().Resize(1)
+	rs := td.ResourceSpans().At(0)
+	rs.InstrumentationLibrarySpans().Resize(1)
+	ils := rs.InstrumentationLibrarySpans().At(0)
+	ils.Spans().Resize(1)
+	span := ils.Spans().At(0)
 	span.SetTraceID(
 		pdata.NewTraceID([16]byte{0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF, 0x80}))
 	span.SetSpanID(pdata.NewSpanID([8]byte{0xAF, 0xAE, 0xAD, 0xAC, 0xAB, 0xAA, 0xA9, 0xA8}))
 	span.SetName("MinimalData")
-	span.SetKind(pdata.SpanKindClient)
-	span.SetStartTimestamp(1596911098294000000)
-	span.SetEndTimestamp(1596911098295000000)
+	span.SetKind(pdata.SpanKindCLIENT)
+	span.SetStartTime(1596911098294000000)
+	span.SetEndTime(1596911098295000000)
+	span.Attributes().InitEmptyWithCapacity(0)
 	return td
 }
 
@@ -122,61 +139,27 @@ func generateTraceSingleSpanMinmalResource() pdata.Traces {
 	td := generateTraceSingleSpanNoResourceOrInstrLibrary()
 	rs := td.ResourceSpans().At(0)
 	rsc := rs.Resource()
+	rsc.Attributes().InitEmptyWithCapacity(1)
 	rsc.Attributes().UpsertString(conventions.AttributeServiceName, "SoleAttr")
 	return td
 }
 
 func generateTraceSingleSpanErrorStatus() pdata.Traces {
 	td := pdata.NewTraces()
-	span := td.ResourceSpans().AppendEmpty().InstrumentationLibrarySpans().AppendEmpty().Spans().AppendEmpty()
+	td.ResourceSpans().Resize(1)
+	rs := td.ResourceSpans().At(0)
+	rs.InstrumentationLibrarySpans().Resize(1)
+	ils := rs.InstrumentationLibrarySpans().At(0)
+	ils.Spans().Resize(1)
+	span := ils.Spans().At(0)
 	span.SetTraceID(
 		pdata.NewTraceID([16]byte{0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF, 0x80}))
 	span.SetSpanID(pdata.NewSpanID([8]byte{0xAF, 0xAE, 0xAD, 0xAC, 0xAB, 0xAA, 0xA9, 0xA8}))
 	span.SetName("MinimalData")
-	span.SetKind(pdata.SpanKindClient)
-	span.SetStartTimestamp(1596911098294000000)
-	span.SetEndTimestamp(1596911098295000000)
+	span.SetKind(pdata.SpanKindCLIENT)
+	span.SetStartTime(1596911098294000000)
+	span.SetEndTime(1596911098295000000)
+	span.Attributes().InitEmptyWithCapacity(0)
 	span.Status().SetCode(pdata.StatusCodeError)
 	return td
-}
-
-func TestV2SpanWithoutTimestampGetsTag(t *testing.T) {
-	duration := int64(2948533333)
-	spans := make([]*zipkinmodel.SpanModel, 1)
-	spans[0] = &zipkinmodel.SpanModel{
-		SpanContext: zipkinmodel.SpanContext{
-			TraceID: convertTraceID(
-				pdata.NewTraceID([16]byte{0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF, 0x80})),
-			ID: convertSpanID(pdata.NewSpanID([8]byte{0xAF, 0xAE, 0xAD, 0xAC, 0xAB, 0xAA, 0xA9, 0xA8})),
-		},
-		Name:           "NoTimestamps",
-		Kind:           zipkinmodel.Client,
-		Duration:       time.Duration(duration),
-		Shared:         false,
-		LocalEndpoint:  nil,
-		RemoteEndpoint: nil,
-		Annotations:    nil,
-		Tags:           nil,
-	}
-
-	gb, err := V2SpansToInternalTraces(spans, false)
-	if err != nil {
-		t.Errorf("Unexpected error: %v", err)
-		return
-	}
-
-	gs := gb.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0).Spans().At(0)
-	assert.NotNil(t, gs.StartTimestamp)
-	assert.NotNil(t, gs.EndTimestamp)
-
-	// expect starttime to be set to zero (unix time)
-	unixTime := gs.StartTimestamp().AsTime().Unix()
-	assert.Equal(t, int64(0), unixTime)
-
-	// expect end time to be zero (unix time) plus the duration
-	assert.Equal(t, duration, gs.EndTimestamp().AsTime().UnixNano())
-
-	wasAbsent, mapContainedKey := gs.Attributes().Get(startTimeAbsent)
-	assert.True(t, mapContainedKey)
-	assert.True(t, wasAbsent.BoolVal())
 }

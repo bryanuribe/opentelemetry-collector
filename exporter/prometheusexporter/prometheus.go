@@ -49,17 +49,14 @@ func newPrometheusExporter(config *Config, logger *zap.Logger) (*prometheusExpor
 		return nil, errBlankPrometheusAddress
 	}
 
-	obsrep := obsreport.NewExporter(obsreport.ExporterSettings{
-		Level:      configtelemetry.GetMetricsLevelFlagValue(),
-		ExporterID: config.ID(),
-	})
+	obsrep := obsreport.NewExporter(configtelemetry.GetMetricsLevelFlagValue(), config.Name())
 
 	collector := newCollector(config, logger)
 	registry := prometheus.NewRegistry()
 	_ = registry.Register(collector)
 
 	return &prometheusExporter{
-		name:         config.ID().String(),
+		name:         config.Name(),
 		endpoint:     addr,
 		collector:    collector,
 		registry:     registry,
@@ -93,17 +90,17 @@ func (pe *prometheusExporter) Start(_ context.Context, _ component.Host) error {
 }
 
 func (pe *prometheusExporter) ConsumeMetrics(ctx context.Context, md pdata.Metrics) error {
-	pe.obsrep.StartMetricsOp(ctx)
+	pe.obsrep.StartMetricsExportOp(ctx)
 	n := 0
 	rmetrics := md.ResourceMetrics()
 	for i := 0; i < rmetrics.Len(); i++ {
 		n += pe.collector.processMetrics(rmetrics.At(i))
 	}
-	pe.obsrep.EndMetricsOp(ctx, n, nil)
+	pe.obsrep.EndMetricsExportOp(ctx, n, nil)
 
 	return nil
 }
 
-func (pe *prometheusExporter) Shutdown(context.Context) error {
+func (pe *prometheusExporter) Shutdown(ctx context.Context) error {
 	return pe.shutdownFunc()
 }

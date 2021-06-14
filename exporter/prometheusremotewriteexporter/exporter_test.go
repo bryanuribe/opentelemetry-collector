@@ -29,90 +29,88 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confighttp"
-	"go.opentelemetry.io/collector/config/configtls"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
+	"go.opentelemetry.io/collector/internal"
+	otlpcollectormetrics "go.opentelemetry.io/collector/internal/data/protogen/collector/metrics/v1"
+	otlp "go.opentelemetry.io/collector/internal/data/protogen/metrics/v1"
 	"go.opentelemetry.io/collector/internal/testdata"
+	"go.opentelemetry.io/collector/internal/version"
 )
 
-// Test_NewPRWExporter checks that a new exporter instance with non-nil fields is initialized
-func Test_NewPRWExporter(t *testing.T) {
-	cfg := &Config{
-		ExporterSettings:   config.NewExporterSettings(config.NewID(typeStr)),
+// Test_ NewPrwExporter checks that a new exporter instance with non-nil fields is initialized
+func Test_NewPrwExporter(t *testing.T) {
+	config := &Config{
+		ExporterSettings:   configmodels.ExporterSettings{},
 		TimeoutSettings:    exporterhelper.TimeoutSettings{},
+		QueueSettings:      exporterhelper.QueueSettings{},
 		RetrySettings:      exporterhelper.RetrySettings{},
 		Namespace:          "",
 		ExternalLabels:     map[string]string{},
 		HTTPClientSettings: confighttp.HTTPClientSettings{Endpoint: ""},
 	}
-	buildInfo := component.BuildInfo{
-		Description: "OpenTelemetry Collector",
-		Version:     "1.0",
-	}
-
 	tests := []struct {
-		name                string
-		config              *Config
-		namespace           string
-		endpoint            string
-		concurrency         int
-		externalLabels      map[string]string
-		returnErrorOnCreate bool
-		buildInfo           component.BuildInfo
+		name           string
+		config         *Config
+		namespace      string
+		endpoint       string
+		externalLabels map[string]string
+		client         *http.Client
+		returnError    bool
 	}{
 		{
-			name:                "invalid_URL",
-			config:              cfg,
-			namespace:           "test",
-			endpoint:            "invalid URL",
-			concurrency:         5,
-			externalLabels:      map[string]string{"Key1": "Val1"},
-			returnErrorOnCreate: true,
-			buildInfo:           buildInfo,
+			"invalid_URL",
+			config,
+			"test",
+			"invalid URL",
+			map[string]string{"Key1": "Val1"},
+			http.DefaultClient,
+			true,
 		},
 		{
-			name:                "invalid_labels_case",
-			config:              cfg,
-			namespace:           "test",
-			endpoint:            "http://some.url:9411/api/prom/push",
-			concurrency:         5,
-			externalLabels:      map[string]string{"Key1": ""},
-			returnErrorOnCreate: true,
-			buildInfo:           buildInfo,
+			"nil_client",
+			config,
+			"test",
+			"http://some.url:9411/api/prom/push",
+			map[string]string{"Key1": "Val1"},
+			nil,
+			true,
 		},
 		{
-			name:           "success_case",
-			config:         cfg,
-			namespace:      "test",
-			endpoint:       "http://some.url:9411/api/prom/push",
-			concurrency:    5,
-			externalLabels: map[string]string{"Key1": "Val1"},
-			buildInfo:      buildInfo,
+			"invalid_labels_case",
+			config,
+			"test",
+			"http://some.url:9411/api/prom/push",
+			map[string]string{"Key1": ""},
+			http.DefaultClient,
+			true,
 		},
 		{
-			name:           "success_case_no_labels",
-			config:         cfg,
-			namespace:      "test",
-			endpoint:       "http://some.url:9411/api/prom/push",
-			concurrency:    5,
-			externalLabels: map[string]string{},
-			buildInfo:      buildInfo,
+			"success_case",
+			config,
+			"test",
+			"http://some.url:9411/api/prom/push",
+			map[string]string{"Key1": "Val1"},
+			http.DefaultClient,
+			false,
+		},
+		{
+			"success_case_no_labels",
+			config,
+			"test",
+			"http://some.url:9411/api/prom/push",
+			map[string]string{},
+			http.DefaultClient,
+			false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg.HTTPClientSettings.Endpoint = tt.endpoint
-			cfg.ExternalLabels = tt.externalLabels
-			cfg.Namespace = tt.namespace
-			cfg.RemoteWriteQueue.NumConsumers = 1
-			prwe, err := NewPRWExporter(cfg, tt.buildInfo)
-
-			if tt.returnErrorOnCreate {
+			prwe, err := NewPrwExporter(tt.namespace, tt.endpoint, tt.client, tt.externalLabels)
+			if tt.returnError {
 				assert.Error(t, err)
 				return
 			}
@@ -120,94 +118,16 @@ func Test_NewPRWExporter(t *testing.T) {
 			assert.NotNil(t, prwe.namespace)
 			assert.NotNil(t, prwe.endpointURL)
 			assert.NotNil(t, prwe.externalLabels)
+			assert.NotNil(t, prwe.client)
 			assert.NotNil(t, prwe.closeChan)
 			assert.NotNil(t, prwe.wg)
-			assert.NotNil(t, prwe.userAgentHeader)
-			assert.NotNil(t, prwe.clientSettings)
-		})
-	}
-}
-
-// Test_Start checks if the client is properly created as expected.
-func Test_Start(t *testing.T) {
-	cfg := &Config{
-		ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
-		TimeoutSettings:  exporterhelper.TimeoutSettings{},
-		RetrySettings:    exporterhelper.RetrySettings{},
-		Namespace:        "",
-		ExternalLabels:   map[string]string{},
-	}
-	buildInfo := component.BuildInfo{
-		Description: "OpenTelemetry Collector",
-		Version:     "1.0",
-	}
-	tests := []struct {
-		name                 string
-		config               *Config
-		namespace            string
-		concurrency          int
-		externalLabels       map[string]string
-		returnErrorOnStartUp bool
-		buildInfo            component.BuildInfo
-		endpoint             string
-		clientSettings       confighttp.HTTPClientSettings
-	}{
-		{
-			name:           "success_case",
-			config:         cfg,
-			namespace:      "test",
-			concurrency:    5,
-			externalLabels: map[string]string{"Key1": "Val1"},
-			buildInfo:      buildInfo,
-			clientSettings: confighttp.HTTPClientSettings{Endpoint: "https://some.url:9411/api/prom/push"},
-		},
-		{
-			name:                 "invalid_tls",
-			config:               cfg,
-			namespace:            "test",
-			concurrency:          5,
-			externalLabels:       map[string]string{"Key1": "Val1"},
-			buildInfo:            buildInfo,
-			returnErrorOnStartUp: true,
-			clientSettings: confighttp.HTTPClientSettings{
-				Endpoint: "https://some.url:9411/api/prom/push",
-				TLSSetting: configtls.TLSClientSetting{
-					TLSSetting: configtls.TLSSetting{
-						CAFile:   "non-existent file",
-						CertFile: "",
-						KeyFile:  "",
-					},
-					Insecure:   false,
-					ServerName: "",
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg.ExternalLabels = tt.externalLabels
-			cfg.Namespace = tt.namespace
-			cfg.RemoteWriteQueue.NumConsumers = 1
-			cfg.HTTPClientSettings = tt.clientSettings
-
-			prwe, err := NewPRWExporter(cfg, tt.buildInfo)
-			assert.NoError(t, err)
-			assert.NotNil(t, prwe)
-
-			err = prwe.Start(context.Background(), componenttest.NewNopHost())
-			if tt.returnErrorOnStartUp {
-				assert.Error(t, err)
-				return
-			}
-			assert.NotNil(t, prwe.client)
 		})
 	}
 }
 
 // Test_Shutdown checks after Shutdown is called, incoming calls to PushMetrics return error.
 func Test_Shutdown(t *testing.T) {
-	prwe := &PRWExporter{
+	prwe := &PrwExporter{
 		wg:        new(sync.WaitGroup),
 		closeChan: make(chan struct{}),
 	}
@@ -219,7 +139,7 @@ func Test_Shutdown(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errChan <- prwe.PushMetrics(context.Background(), pdata.NewMetrics())
+			errChan <- prwe.PushMetrics(context.Background(), testdata.GenerateMetricsEmpty())
 		}()
 	}
 	wg.Wait()
@@ -248,7 +168,7 @@ func Test_export(t *testing.T) {
 		// Receives the http requests and unzip, unmarshals, and extracts TimeSeries
 		assert.Equal(t, "0.1.0", r.Header.Get("X-Prometheus-Remote-Write-Version"))
 		assert.Equal(t, "snappy", r.Header.Get("Content-Encoding"))
-		assert.Equal(t, "opentelemetry-collector/1.0", r.Header.Get("User-Agent"))
+		assert.Equal(t, "OpenTelemetry-Collector/"+version.Version, r.Header.Get("User-Agent"))
 		writeReq := &prompb.WriteRequest{}
 		unzipped := []byte{}
 
@@ -267,11 +187,11 @@ func Test_export(t *testing.T) {
 	// Create in test table format to check if different HTTP response codes or server errors
 	// are properly identified
 	tests := []struct {
-		name                string
-		ts                  prompb.TimeSeries
-		serverUp            bool
-		httpResponseCode    int
-		returnErrorOnCreate bool
+		name             string
+		ts               prompb.TimeSeries
+		serverUp         bool
+		httpResponseCode int
+		returnError      bool
 	}{
 		{"success_case",
 			*ts1,
@@ -308,7 +228,7 @@ func Test_export(t *testing.T) {
 				server.Close()
 			}
 			errs := runExportPipeline(ts1, serverURL)
-			if tt.returnErrorOnCreate {
+			if tt.returnError {
 				assert.Error(t, errs[0])
 				return
 			}
@@ -324,26 +244,13 @@ func runExportPipeline(ts *prompb.TimeSeries, endpoint *url.URL) []error {
 	testmap := make(map[string]*prompb.TimeSeries)
 	testmap["test"] = ts
 
-	cfg := createDefaultConfig().(*Config)
-	cfg.HTTPClientSettings.Endpoint = endpoint.String()
-	cfg.RemoteWriteQueue.NumConsumers = 1
-
-	buildInfo := component.BuildInfo{
-		Description: "OpenTelemetry Collector",
-		Version:     "1.0",
-	}
+	HTTPClient := http.DefaultClient
 	// after this, instantiate a CortexExporter with the current HTTP client and endpoint set to passed in endpoint
-	prwe, err := NewPRWExporter(cfg, buildInfo)
+	prwe, err := NewPrwExporter("test", endpoint.String(), HTTPClient, map[string]string{})
 	if err != nil {
 		errs = append(errs, err)
 		return errs
 	}
-
-	if err = prwe.Start(context.Background(), componenttest.NewNopHost()); err != nil {
-		errs = append(errs, err)
-		return errs
-	}
-
 	errs = append(errs, prwe.export(context.Background(), testmap)...)
 	return errs
 }
@@ -357,37 +264,238 @@ func Test_PushMetrics(t *testing.T) {
 	// success cases
 	intSumBatch := testdata.GenerateMetricsManyMetricsSameResource(10)
 
-	doubleSumBatch := getMetricsFromMetricList(validMetrics1[validDoubleSum], validMetrics2[validDoubleSum])
+	doubleSumMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							validMetrics1[validDoubleSum],
+							validMetrics2[validDoubleSum],
+						},
+					},
+				},
+			},
+		},
+	}
+	doubleSumBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(doubleSumMetric))
 
-	intGaugeBatch := getMetricsFromMetricList(validMetrics1[validIntGauge], validMetrics2[validIntGauge])
+	intGaugeMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							validMetrics1[validIntGauge],
+							validMetrics2[validIntGauge],
+						},
+					},
+				},
+			},
+		},
+	}
+	intGaugeBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(intGaugeMetric))
 
-	doubleGaugeBatch := getMetricsFromMetricList(validMetrics1[validDoubleGauge], validMetrics2[validDoubleGauge])
+	doubleGaugeMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							validMetrics1[validDoubleGauge],
+							validMetrics2[validDoubleGauge],
+						},
+					},
+				},
+			},
+		},
+	}
+	doubleGaugeBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(doubleGaugeMetric))
 
-	intHistogramBatch := getMetricsFromMetricList(validMetrics1[validIntHistogram], validMetrics2[validIntHistogram])
+	intHistogramMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							validMetrics1[validIntHistogram],
+							validMetrics2[validIntHistogram],
+						},
+					},
+				},
+			},
+		},
+	}
+	intHistogramBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(intHistogramMetric))
 
-	histogramBatch := getMetricsFromMetricList(validMetrics1[validHistogram], validMetrics2[validHistogram])
+	doubleHistogramMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							validMetrics1[validDoubleHistogram],
+							validMetrics2[validDoubleHistogram],
+						},
+					},
+				},
+			},
+		},
+	}
+	doubleHistogramBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(doubleHistogramMetric))
 
-	summaryBatch := getMetricsFromMetricList(validMetrics1[validSummary], validMetrics2[validSummary])
+	doubleSummaryMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							validMetrics1[validDoubleSummary],
+							validMetrics2[validDoubleSummary],
+						},
+					},
+				},
+			},
+		},
+	}
+	doubleSummaryBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(doubleSummaryMetric))
 
 	// len(BucketCount) > len(ExplicitBounds)
-	unmatchedBoundBucketIntHistBatch := getMetricsFromMetricList(validMetrics2[unmatchedBoundBucketIntHist])
+	unmatchedBoundBucketIntHistMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							validMetrics2[unmatchedBoundBucketIntHist],
+						},
+					},
+				},
+			},
+		},
+	}
+	unmatchedBoundBucketIntHistBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(unmatchedBoundBucketIntHistMetric))
 
-	unmatchedBoundBucketHistBatch := getMetricsFromMetricList(validMetrics2[unmatchedBoundBucketHist])
+	unmatchedBoundBucketDoubleHistMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							validMetrics2[unmatchedBoundBucketDoubleHist],
+						},
+					},
+				},
+			},
+		},
+	}
+	unmatchedBoundBucketDoubleHistBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(unmatchedBoundBucketDoubleHistMetric))
 
 	// fail cases
-	emptyIntGaugeBatch := getMetricsFromMetricList(invalidMetrics[emptyIntGauge])
+	nilDataPointIntGaugeMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							errorMetrics[nilDataPointIntGauge],
+						},
+					},
+				},
+			},
+		},
+	}
+	nilDataPointIntGaugeBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(nilDataPointIntGaugeMetric))
 
-	emptyDoubleGaugeBatch := getMetricsFromMetricList(invalidMetrics[emptyDoubleGauge])
+	nilDataPointDoubleGaugeMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							errorMetrics[nilDataPointDoubleGauge],
+						},
+					},
+				},
+			},
+		},
+	}
+	nilDataPointDoubleGaugeBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(nilDataPointDoubleGaugeMetric))
 
-	emptyCumulativeIntSumBatch := getMetricsFromMetricList(invalidMetrics[emptyCumulativeIntSum])
+	nilDataPointIntSumMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							errorMetrics[nilDataPointIntSum],
+						},
+					},
+				},
+			},
+		},
+	}
+	nilDataPointIntSumBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(nilDataPointIntSumMetric))
 
-	emptyCumulativeDoubleSumBatch := getMetricsFromMetricList(invalidMetrics[emptyCumulativeDoubleSum])
+	nilDataPointDoubleSumMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							errorMetrics[nilDataPointDoubleSum],
+						},
+					},
+				},
+			},
+		},
+	}
+	nilDataPointDoubleSumBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(nilDataPointDoubleSumMetric))
 
-	emptyCumulativeIntHistogramBatch := getMetricsFromMetricList(invalidMetrics[emptyCumulativeIntHistogram])
+	nilDataPointIntHistogramMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							errorMetrics[nilDataPointIntHistogram],
+						},
+					},
+				},
+			},
+		},
+	}
+	nilDataPointIntHistogramBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(nilDataPointIntHistogramMetric))
 
-	emptyCumulativeHistogramBatch := getMetricsFromMetricList(invalidMetrics[emptyCumulativeHistogram])
+	nilDataPointDoubleHistogramMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							errorMetrics[nilDataPointDoubleHistogram],
+						},
+					},
+				},
+			},
+		},
+	}
+	nilDataPointDoubleHistogramBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(nilDataPointDoubleHistogramMetric))
 
-	emptyCumulativeSummaryBatch := getMetricsFromMetricList(invalidMetrics[emptySummary])
+	nilDataPointDoubleSummaryMetric := &otlpcollectormetrics.ExportMetricsServiceRequest{
+		ResourceMetrics: []*otlp.ResourceMetrics{
+			{
+				InstrumentationLibraryMetrics: []*otlp.InstrumentationLibraryMetrics{
+					{
+						Metrics: []*otlp.Metric{
+							errorMetrics[nilDataPointDoubleSummary],
+						},
+					},
+				},
+			},
+		},
+	}
+	nilDataPointDoubleSummaryBatch := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(nilDataPointDoubleSummaryMetric))
 
 	checkFunc := func(t *testing.T, r *http.Request, expected int) {
 		body, err := ioutil.ReadAll(r.Body)
@@ -399,7 +507,7 @@ func Test_PushMetrics(t *testing.T) {
 		dest, err := snappy.Decode(buf, body)
 		assert.Equal(t, "0.1.0", r.Header.Get("x-prometheus-remote-write-version"))
 		assert.Equal(t, "snappy", r.Header.Get("content-encoding"))
-		assert.Equal(t, "opentelemetry-collector/1.0", r.Header.Get("User-Agent"))
+		assert.Equal(t, "OpenTelemetry-Collector/"+version.Version, r.Header.Get("user-agent"))
 		assert.NotNil(t, r.Header.Get("tenant-id"))
 		require.NoError(t, err)
 		wr := &prompb.WriteRequest{}
@@ -465,16 +573,16 @@ func Test_PushMetrics(t *testing.T) {
 			false,
 		},
 		{
-			"histogram_case",
-			&histogramBatch,
+			"doubleHistogram_case",
+			&doubleHistogramBatch,
 			checkFunc,
 			12,
 			http.StatusAccepted,
 			false,
 		},
 		{
-			"summary_case",
-			&summaryBatch,
+			"doubleSummary_case",
+			&doubleSummaryBatch,
 			checkFunc,
 			10,
 			http.StatusAccepted,
@@ -489,8 +597,8 @@ func Test_PushMetrics(t *testing.T) {
 			false,
 		},
 		{
-			"unmatchedBoundBucketHist_case",
-			&unmatchedBoundBucketHistBatch,
+			"unmatchedBoundBucketDoubleHist_case",
+			&unmatchedBoundBucketDoubleHistBatch,
 			checkFunc,
 			5,
 			http.StatusAccepted,
@@ -498,63 +606,63 @@ func Test_PushMetrics(t *testing.T) {
 		},
 		{
 			"5xx_case",
-			&unmatchedBoundBucketHistBatch,
+			&unmatchedBoundBucketDoubleHistBatch,
 			checkFunc,
 			5,
 			http.StatusServiceUnavailable,
 			true,
 		},
 		{
-			"emptyDoubleGauge_case",
-			&emptyDoubleGaugeBatch,
+			"nilDataPointDoubleGauge_case",
+			&nilDataPointDoubleGaugeBatch,
 			checkFunc,
 			0,
 			http.StatusAccepted,
 			true,
 		},
 		{
-			"emptyIntGauge_case",
-			&emptyIntGaugeBatch,
+			"nilDataPointIntGauge_case",
+			&nilDataPointIntGaugeBatch,
 			checkFunc,
 			0,
 			http.StatusAccepted,
 			true,
 		},
 		{
-			"emptyCumulativeDoubleSum_case",
-			&emptyCumulativeDoubleSumBatch,
+			"nilDataPointDoubleSum_case",
+			&nilDataPointDoubleSumBatch,
 			checkFunc,
 			0,
 			http.StatusAccepted,
 			true,
 		},
 		{
-			"emptyCumulativeIntSum_case",
-			&emptyCumulativeIntSumBatch,
+			"nilDataPointIntSum_case",
+			&nilDataPointIntSumBatch,
 			checkFunc,
 			0,
 			http.StatusAccepted,
 			true,
 		},
 		{
-			"emptyCumulativeHistogram_case",
-			&emptyCumulativeHistogramBatch,
+			"nilDataPointDoubleHistogram_case",
+			&nilDataPointDoubleHistogramBatch,
 			checkFunc,
 			0,
 			http.StatusAccepted,
 			true,
 		},
 		{
-			"emptyCumulativeIntHistogram_case",
-			&emptyCumulativeIntHistogramBatch,
+			"nilDataPointIntHistogram_case",
+			&nilDataPointIntHistogramBatch,
 			checkFunc,
 			0,
 			http.StatusAccepted,
 			true,
 		},
 		{
-			"emptyCumulativeSummary_case",
-			&emptyCumulativeSummaryBatch,
+			"nilDataPointDoubleSummary_case",
+			&nilDataPointDoubleSummaryBatch,
 			checkFunc,
 			0,
 			http.StatusAccepted,
@@ -573,27 +681,28 @@ func Test_PushMetrics(t *testing.T) {
 
 			defer server.Close()
 
-			cfg := &Config{
-				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
-				Namespace:        "",
+			serverURL, uErr := url.Parse(server.URL)
+			assert.NoError(t, uErr)
+
+			config := &Config{
+				ExporterSettings: configmodels.ExporterSettings{
+					TypeVal: "prometheusremotewrite",
+					NameVal: "prometheusremotewrite",
+				},
+				Namespace: "",
 				HTTPClientSettings: confighttp.HTTPClientSettings{
-					Endpoint: server.URL,
+					Endpoint: "http://some.url:9411/api/prom/push",
 					// We almost read 0 bytes, so no need to tune ReadBufferSize.
 					ReadBufferSize:  0,
 					WriteBufferSize: 512 * 1024,
 				},
-				RemoteWriteQueue: RemoteWriteQueue{NumConsumers: 5},
 			}
-			assert.NotNil(t, cfg)
+			assert.NotNil(t, config)
 			// c, err := config.HTTPClientSettings.ToClient()
 			// assert.Nil(t, err)
-			buildInfo := component.BuildInfo{
-				Description: "OpenTelemetry Collector",
-				Version:     "1.0",
-			}
-			prwe, nErr := NewPRWExporter(cfg, buildInfo)
+			c := http.DefaultClient
+			prwe, nErr := NewPrwExporter(config.Namespace, serverURL.String(), c, map[string]string{})
 			require.NoError(t, nErr)
-			require.NoError(t, prwe.Start(context.Background(), componenttest.NewNopHost()))
 			err := prwe.PushMetrics(context.Background(), *tt.md)
 			if tt.returnErr {
 				assert.Error(t, err)
@@ -606,10 +715,10 @@ func Test_PushMetrics(t *testing.T) {
 
 func Test_validateAndSanitizeExternalLabels(t *testing.T) {
 	tests := []struct {
-		name                string
-		inputLabels         map[string]string
-		expectedLabels      map[string]string
-		returnErrorOnCreate bool
+		name           string
+		inputLabels    map[string]string
+		expectedLabels map[string]string
+		returnError    bool
 	}{
 		{"success_case_no_labels",
 			map[string]string{},
@@ -641,7 +750,7 @@ func Test_validateAndSanitizeExternalLabels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			newLabels, err := validateAndSanitizeExternalLabels(tt.inputLabels)
-			if tt.returnErrorOnCreate {
+			if tt.returnError {
 				assert.Error(t, err)
 				return
 			}

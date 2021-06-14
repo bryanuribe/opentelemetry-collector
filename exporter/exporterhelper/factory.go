@@ -17,38 +17,41 @@ package exporterhelper
 import (
 	"context"
 
+	"github.com/spf13/viper"
+
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenterror"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configerror"
+	"go.opentelemetry.io/collector/config/configmodels"
 )
 
 // FactoryOption apply changes to ExporterOptions.
 type FactoryOption func(o *factory)
 
 // CreateDefaultConfig is the equivalent of component.ExporterFactory.CreateDefaultConfig()
-type CreateDefaultConfig func() config.Exporter
+type CreateDefaultConfig func() configmodels.Exporter
 
-// CreateTracesExporter is the equivalent of component.ExporterFactory.CreateTracesExporter()
-type CreateTracesExporter func(context.Context, component.ExporterCreateSettings, config.Exporter) (component.TracesExporter, error)
+// CreateTraceExporter is the equivalent of component.ExporterFactory.CreateTracesExporter()
+type CreateTraceExporter func(context.Context, component.ExporterCreateParams, configmodels.Exporter) (component.TracesExporter, error)
 
 // CreateMetricsExporter is the equivalent of component.ExporterFactory.CreateMetricsExporter()
-type CreateMetricsExporter func(context.Context, component.ExporterCreateSettings, config.Exporter) (component.MetricsExporter, error)
+type CreateMetricsExporter func(context.Context, component.ExporterCreateParams, configmodels.Exporter) (component.MetricsExporter, error)
 
-// CreateLogsExporter is the equivalent of component.ExporterFactory.CreateLogsExporter()
-type CreateLogsExporter func(context.Context, component.ExporterCreateSettings, config.Exporter) (component.LogsExporter, error)
+// CreateMetricsExporter is the equivalent of component.ExporterFactory.CreateLogsExporter()
+type CreateLogsExporter func(context.Context, component.ExporterCreateParams, configmodels.Exporter) (component.LogsExporter, error)
 
 type factory struct {
-	cfgType               config.Type
+	cfgType               configmodels.Type
+	customUnmarshaler     component.CustomUnmarshaler
 	createDefaultConfig   CreateDefaultConfig
-	createTracesExporter  CreateTracesExporter
+	createTraceExporter   CreateTraceExporter
 	createMetricsExporter CreateMetricsExporter
 	createLogsExporter    CreateLogsExporter
 }
 
 // WithTraces overrides the default "error not supported" implementation for CreateTracesReceiver.
-func WithTraces(createTracesExporter CreateTracesExporter) FactoryOption {
+func WithTraces(createTraceExporter CreateTraceExporter) FactoryOption {
 	return func(o *factory) {
-		o.createTracesExporter = createTracesExporter
+		o.createTraceExporter = createTraceExporter
 	}
 }
 
@@ -66,9 +69,16 @@ func WithLogs(createLogsExporter CreateLogsExporter) FactoryOption {
 	}
 }
 
+// WithCustomUnmarshaler implements component.ConfigUnmarshaler.
+func WithCustomUnmarshaler(customUnmarshaler component.CustomUnmarshaler) FactoryOption {
+	return func(o *factory) {
+		o.customUnmarshaler = customUnmarshaler
+	}
+}
+
 // NewFactory returns a component.ExporterFactory.
 func NewFactory(
-	cfgType config.Type,
+	cfgType configmodels.Type,
 	createDefaultConfig CreateDefaultConfig,
 	options ...FactoryOption) component.ExporterFactory {
 	f := &factory{
@@ -78,49 +88,66 @@ func NewFactory(
 	for _, opt := range options {
 		opt(f)
 	}
-	return f
+	var ret component.ExporterFactory
+	if f.customUnmarshaler != nil {
+		ret = &factoryWithUnmarshaler{f}
+	} else {
+		ret = f
+	}
+	return ret
 }
 
 // Type gets the type of the Exporter config created by this factory.
-func (f *factory) Type() config.Type {
+func (f *factory) Type() configmodels.Type {
 	return f.cfgType
 }
 
 // CreateDefaultConfig creates the default configuration for processor.
-func (f *factory) CreateDefaultConfig() config.Exporter {
+func (f *factory) CreateDefaultConfig() configmodels.Exporter {
 	return f.createDefaultConfig()
 }
 
-// CreateTracesExporter creates a component.TracesExporter based on this config.
+// CreateTraceExporter creates a component.TracesExporter based on this config.
 func (f *factory) CreateTracesExporter(
 	ctx context.Context,
-	set component.ExporterCreateSettings,
-	cfg config.Exporter) (component.TracesExporter, error) {
-	if f.createTracesExporter != nil {
-		return f.createTracesExporter(ctx, set, cfg)
+	params component.ExporterCreateParams,
+	cfg configmodels.Exporter) (component.TracesExporter, error) {
+	if f.createTraceExporter != nil {
+		return f.createTraceExporter(ctx, params, cfg)
 	}
-	return nil, componenterror.ErrDataTypeIsNotSupported
+	return nil, configerror.ErrDataTypeIsNotSupported
 }
 
 // CreateMetricsExporter creates a component.MetricsExporter based on this config.
 func (f *factory) CreateMetricsExporter(
 	ctx context.Context,
-	set component.ExporterCreateSettings,
-	cfg config.Exporter) (component.MetricsExporter, error) {
+	params component.ExporterCreateParams,
+	cfg configmodels.Exporter) (component.MetricsExporter, error) {
 	if f.createMetricsExporter != nil {
-		return f.createMetricsExporter(ctx, set, cfg)
+		return f.createMetricsExporter(ctx, params, cfg)
 	}
-	return nil, componenterror.ErrDataTypeIsNotSupported
+	return nil, configerror.ErrDataTypeIsNotSupported
 }
 
 // CreateLogsExporter creates a metrics processor based on this config.
 func (f *factory) CreateLogsExporter(
 	ctx context.Context,
-	set component.ExporterCreateSettings,
-	cfg config.Exporter,
+	params component.ExporterCreateParams,
+	cfg configmodels.Exporter,
 ) (component.LogsExporter, error) {
 	if f.createLogsExporter != nil {
-		return f.createLogsExporter(ctx, set, cfg)
+		return f.createLogsExporter(ctx, params, cfg)
 	}
-	return nil, componenterror.ErrDataTypeIsNotSupported
+	return nil, configerror.ErrDataTypeIsNotSupported
+}
+
+var _ component.ConfigUnmarshaler = (*factoryWithUnmarshaler)(nil)
+
+type factoryWithUnmarshaler struct {
+	*factory
+}
+
+// Unmarshal un-marshals the config using the provided custom unmarshaler.
+func (f *factoryWithUnmarshaler) Unmarshal(componentViperSection *viper.Viper, intoCfg interface{}) error {
+	return f.customUnmarshaler(componentViperSection, intoCfg)
 }

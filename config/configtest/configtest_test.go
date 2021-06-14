@@ -21,61 +21,48 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 )
 
-func TestLoadConfig(t *testing.T) {
+func TestLoadConfigFile(t *testing.T) {
 	factories, err := componenttest.NopFactories()
 	assert.NoError(t, err)
 
-	cfg, err := LoadConfig("testdata/config.yaml", factories)
-	require.NoError(t, err)
+	cfg, err := LoadConfigFile(t, "testdata/config.yaml", factories)
+	require.NoError(t, err, "Unable to load config")
 
 	// Verify extensions.
 	require.Len(t, cfg.Extensions, 2)
-	assert.Contains(t, cfg.Extensions, config.NewID("nop"))
-	assert.Contains(t, cfg.Extensions, config.NewIDWithName("nop", "myextension"))
+	assert.Contains(t, cfg.Extensions, "nop")
+	assert.Contains(t, cfg.Extensions, "nop/myextension")
 
 	// Verify receivers
 	require.Len(t, cfg.Receivers, 2)
-	assert.Contains(t, cfg.Receivers, config.NewID("nop"))
-	assert.Contains(t, cfg.Receivers, config.NewIDWithName("nop", "myreceiver"))
+	assert.Contains(t, cfg.Receivers, "nop")
+	assert.Contains(t, cfg.Receivers, "nop/myreceiver")
 
 	// Verify exporters
 	assert.Len(t, cfg.Exporters, 2)
-	assert.Contains(t, cfg.Exporters, config.NewID("nop"))
-	assert.Contains(t, cfg.Exporters, config.NewIDWithName("nop", "myexporter"))
+	assert.Contains(t, cfg.Exporters, "nop")
+	assert.Contains(t, cfg.Exporters, "nop/myexporter")
 
 	// Verify Processors
 	assert.Len(t, cfg.Processors, 2)
-	assert.Contains(t, cfg.Processors, config.NewID("nop"))
-	assert.Contains(t, cfg.Processors, config.NewIDWithName("nop", "myprocessor"))
+	assert.Contains(t, cfg.Processors, "nop")
+	assert.Contains(t, cfg.Processors, "nop/myprocessor")
 
 	// Verify service.
 	require.Len(t, cfg.Service.Extensions, 1)
-	assert.Contains(t, cfg.Service.Extensions, config.NewID("nop"))
+	assert.Contains(t, cfg.Service.Extensions, "nop")
 	require.Len(t, cfg.Service.Pipelines, 1)
 	assert.Equal(t,
-		&config.Pipeline{
+		&configmodels.Pipeline{
 			Name:       "traces",
-			InputType:  config.TracesDataType,
-			Receivers:  []config.ComponentID{config.NewID("nop")},
-			Processors: []config.ComponentID{config.NewID("nop")},
-			Exporters:  []config.ComponentID{config.NewID("nop")},
+			InputType:  configmodels.TracesDataType,
+			Receivers:  []string{"nop"},
+			Processors: []string{"nop"},
+			Exporters:  []string{"nop"},
 		},
 		cfg.Service.Pipelines["traces"],
 		"Did not load pipeline config correctly")
-}
-
-func TestLoadConfigAndValidate(t *testing.T) {
-	factories, err := componenttest.NopFactories()
-	assert.NoError(t, err)
-
-	cfgValidate, errValidate := LoadConfigAndValidate("testdata/config.yaml", factories)
-	require.NoError(t, errValidate)
-
-	cfg, errLoad := LoadConfig("testdata/config.yaml", factories)
-	require.NoError(t, errLoad)
-
-	assert.Equal(t, cfg, cfgValidate)
 }

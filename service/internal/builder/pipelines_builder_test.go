@@ -25,7 +25,7 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/pdata"
@@ -37,17 +37,17 @@ func TestBuildPipelines(t *testing.T) {
 	tests := []struct {
 		name          string
 		pipelineName  string
-		exporterNames []config.ComponentID
+		exporterNames []string
 	}{
 		{
 			name:          "one-exporter",
 			pipelineName:  "traces",
-			exporterNames: []config.ComponentID{config.NewID("exampleexporter")},
+			exporterNames: []string{"exampleexporter"},
 		},
 		{
 			name:          "multi-exporter",
 			pipelineName:  "traces/2",
-			exporterNames: []config.ComponentID{config.NewID("exampleexporter"), config.NewIDWithName("exampleexporter", "2")},
+			exporterNames: []string{"exampleexporter", "exampleexporter/2"},
 		},
 	}
 
@@ -58,29 +58,29 @@ func TestBuildPipelines(t *testing.T) {
 	}
 }
 
-func createExampleConfig(dataType string) *config.Config {
+func createExampleConfig(dataType string) *configmodels.Config {
 	exampleReceiverFactory := testcomponents.ExampleReceiverFactory
 	exampleProcessorFactory := testcomponents.ExampleProcessorFactory
 	exampleExporterFactory := testcomponents.ExampleExporterFactory
 
-	cfg := &config.Config{
-		Receivers: map[config.ComponentID]config.Receiver{
-			config.NewID(exampleReceiverFactory.Type()): exampleReceiverFactory.CreateDefaultConfig(),
+	cfg := &configmodels.Config{
+		Receivers: map[string]configmodels.Receiver{
+			string(exampleReceiverFactory.Type()): exampleReceiverFactory.CreateDefaultConfig(),
 		},
-		Processors: map[config.ComponentID]config.Processor{
-			config.NewID(exampleProcessorFactory.Type()): exampleProcessorFactory.CreateDefaultConfig(),
+		Processors: map[string]configmodels.Processor{
+			string(exampleProcessorFactory.Type()): exampleProcessorFactory.CreateDefaultConfig(),
 		},
-		Exporters: map[config.ComponentID]config.Exporter{
-			config.NewID(exampleExporterFactory.Type()): exampleExporterFactory.CreateDefaultConfig(),
+		Exporters: map[string]configmodels.Exporter{
+			string(exampleExporterFactory.Type()): exampleExporterFactory.CreateDefaultConfig(),
 		},
-		Service: config.Service{
-			Pipelines: map[string]*config.Pipeline{
+		Service: configmodels.Service{
+			Pipelines: map[string]*configmodels.Pipeline{
 				dataType: {
 					Name:       dataType,
-					InputType:  config.DataType(dataType),
-					Receivers:  []config.ComponentID{config.NewID(exampleReceiverFactory.Type())},
-					Processors: []config.ComponentID{config.NewID(exampleProcessorFactory.Type())},
-					Exporters:  []config.ComponentID{config.NewID(exampleExporterFactory.Type())},
+					InputType:  configmodels.DataType(dataType),
+					Receivers:  []string{string(exampleReceiverFactory.Type())},
+					Processors: []string{string(exampleProcessorFactory.Type())},
+					Exporters:  []string{string(exampleExporterFactory.Type())},
 				},
 			},
 		},
@@ -113,7 +113,7 @@ func TestBuildPipelines_BuildVarious(t *testing.T) {
 			cfg := createExampleConfig(dataType)
 
 			// BuildProcessors the pipeline
-			allExporters, err := BuildExporters(zap.NewNop(), component.DefaultBuildInfo(), cfg, factories.Exporters)
+			allExporters, err := BuildExporters(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, factories.Exporters)
 			if test.shouldFail {
 				assert.Error(t, err)
 				return
@@ -121,7 +121,7 @@ func TestBuildPipelines_BuildVarious(t *testing.T) {
 
 			require.NoError(t, err)
 			require.EqualValues(t, 1, len(allExporters))
-			pipelineProcessors, err := BuildPipelines(zap.NewNop(), component.DefaultBuildInfo(), cfg, allExporters, factories.Processors)
+			pipelineProcessors, err := BuildPipelines(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, allExporters, factories.Processors)
 
 			assert.NoError(t, err)
 			require.NotNil(t, pipelineProcessors)
@@ -139,7 +139,7 @@ func TestBuildPipelines_BuildVarious(t *testing.T) {
 			assert.NotNil(t, processor.firstLC)
 
 			// Compose the list of created exporters.
-			exporterNames := []config.ComponentID{config.NewID("exampleexporter")}
+			exporterNames := []string{"exampleexporter"}
 			var exporters []*builtExporter
 			for _, name := range exporterNames {
 				// Ensure exporter is created.
@@ -160,7 +160,7 @@ func TestBuildPipelines_BuildVarious(t *testing.T) {
 
 			// Send one custom data.
 			log := pdata.Logs{}
-			require.NoError(t, processor.firstLC.(consumer.Logs).ConsumeLogs(context.Background(), log))
+			processor.firstLC.(consumer.Logs).ConsumeLogs(context.Background(), log)
 
 			// Now verify received data.
 			for _, expConsumer := range exporterConsumers {
@@ -177,17 +177,17 @@ func TestBuildPipelines_BuildVarious(t *testing.T) {
 	}
 }
 
-func testPipeline(t *testing.T, pipelineName string, exporterIDs []config.ComponentID) {
+func testPipeline(t *testing.T, pipelineName string, exporterNames []string) {
 	factories, err := testcomponents.ExampleComponents()
 	assert.NoError(t, err)
-	cfg, err := configtest.LoadConfigAndValidate("testdata/pipelines_builder.yaml", factories)
+	cfg, err := configtest.LoadConfigFile(t, "testdata/pipelines_builder.yaml", factories)
 	// Load the config
 	require.Nil(t, err)
 
 	// BuildProcessors the pipeline
-	allExporters, err := BuildExporters(zap.NewNop(), component.DefaultBuildInfo(), cfg, factories.Exporters)
+	allExporters, err := BuildExporters(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, factories.Exporters)
 	assert.NoError(t, err)
-	pipelineProcessors, err := BuildPipelines(zap.NewNop(), component.DefaultBuildInfo(), cfg, allExporters, factories.Processors)
+	pipelineProcessors, err := BuildPipelines(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, allExporters, factories.Processors)
 
 	assert.NoError(t, err)
 	require.NotNil(t, pipelineProcessors)
@@ -203,7 +203,7 @@ func testPipeline(t *testing.T, pipelineName string, exporterIDs []config.Compon
 
 	// Compose the list of created exporters.
 	var exporters []*builtExporter
-	for _, name := range exporterIDs {
+	for _, name := range exporterNames {
 		// Ensure exporter is created.
 		exp := allExporters[cfg.Exporters[name]]
 		require.NotNil(t, exp)
@@ -215,13 +215,13 @@ func testPipeline(t *testing.T, pipelineName string, exporterIDs []config.Compon
 	// First check that there are no traces in the exporters yet.
 	var exporterConsumers []*testcomponents.ExampleExporterConsumer
 	for _, exporter := range exporters {
-		expConsumer := exporter.getTracesExporter().(*testcomponents.ExampleExporterConsumer)
+		expConsumer := exporter.getTraceExporter().(*testcomponents.ExampleExporterConsumer)
 		exporterConsumers = append(exporterConsumers, expConsumer)
 		require.Equal(t, len(expConsumer.Traces), 0)
 	}
 
-	td := testdata.GenerateTracesOneSpan()
-	require.NoError(t, processor.firstTC.(consumer.Traces).ConsumeTraces(context.Background(), td))
+	td := testdata.GenerateTraceDataOneSpan()
+	processor.firstTC.(consumer.Traces).ConsumeTraces(context.Background(), td)
 
 	// Now verify received data.
 	for _, expConsumer := range exporterConsumers {
@@ -256,13 +256,13 @@ func TestBuildPipelines_NotSupportedDataType(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.configFile, func(t *testing.T) {
 
-			cfg, err := configtest.LoadConfigAndValidate(path.Join("testdata", test.configFile), factories)
+			cfg, err := configtest.LoadConfigFile(t, path.Join("testdata", test.configFile), factories)
 			require.Nil(t, err)
 
-			allExporters, err := BuildExporters(zap.NewNop(), component.DefaultBuildInfo(), cfg, factories.Exporters)
+			allExporters, err := BuildExporters(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, factories.Exporters)
 			assert.NoError(t, err)
 
-			pipelineProcessors, err := BuildPipelines(zap.NewNop(), component.DefaultBuildInfo(), cfg, allExporters, factories.Processors)
+			pipelineProcessors, err := BuildPipelines(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, allExporters, factories.Processors)
 			assert.Error(t, err)
 			assert.Zero(t, len(pipelineProcessors))
 		})

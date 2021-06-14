@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 )
 
@@ -34,21 +34,30 @@ func TestLoadConfig(t *testing.T) {
 	factories.Processors[typeStr] = factory
 	require.NoError(t, err)
 
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
+	cfg, err := configtest.LoadConfigFile(
+		t,
+		path.Join(".", "testdata", "config.yaml"),
+		factories)
 
 	require.Nil(t, err)
 	require.NotNil(t, cfg)
 
-	p0 := cfg.Processors[config.NewID(typeStr)]
+	p0 := cfg.Processors["memory_limiter"]
 	assert.Equal(t, p0,
 		&Config{
-			ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
+			ProcessorSettings: configmodels.ProcessorSettings{
+				TypeVal: "memory_limiter",
+				NameVal: "memory_limiter",
+			},
 		})
 
-	p1 := cfg.Processors[config.NewIDWithName(typeStr, "with-settings")]
+	p1 := cfg.Processors["memory_limiter/with-settings"]
 	assert.Equal(t, p1,
 		&Config{
-			ProcessorSettings:   config.NewProcessorSettings(config.NewIDWithName(typeStr, "with-settings")),
+			ProcessorSettings: configmodels.ProcessorSettings{
+				TypeVal: "memory_limiter",
+				NameVal: "memory_limiter/with-settings",
+			},
 			CheckInterval:       5 * time.Second,
 			MemoryLimitMiB:      4000,
 			MemorySpikeLimitMiB: 500,

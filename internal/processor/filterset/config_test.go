@@ -21,14 +21,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"go.opentelemetry.io/collector/config/configparser"
+	"go.opentelemetry.io/collector/config/configtest"
 	"go.opentelemetry.io/collector/internal/processor/filterset/regexp"
 )
 
 func readTestdataConfigYamls(t *testing.T, filename string) map[string]*Config {
 	testFile := path.Join(".", "testdata", filename)
-	v, err := configparser.NewParserFromFile(testFile)
-	require.NoError(t, err)
+	v := configtest.NewViperFromYamlFile(t, testFile)
 
 	cfgs := map[string]*Config{}
 	require.NoErrorf(t, v.UnmarshalExact(&cfgs), "unable to unmarshal yaml from file %v", testFile)

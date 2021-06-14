@@ -20,7 +20,6 @@ import (
 	"net"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/servers/thriftudp"
@@ -31,10 +30,11 @@ import (
 	jaegerthrift "github.com/jaegertracing/jaeger/thrift-gen/jaeger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/consumer/consumertest"
@@ -44,7 +44,7 @@ import (
 	"go.opentelemetry.io/collector/translator/trace/jaeger"
 )
 
-var jaegerAgent = config.NewIDWithName(typeStr, "agent_test")
+const jaegerAgent = "jaeger_agent_test"
 
 func TestJaegerAgentUDP_ThriftCompact(t *testing.T) {
 	port := testutil.GetAvailablePort(t)
@@ -61,12 +61,12 @@ func TestJaegerAgentUDP_ThriftCompact_InvalidPort(t *testing.T) {
 	config := &configuration{
 		AgentCompactThriftPort: port,
 	}
-	set := componenttest.NewNopReceiverCreateSettings()
-	jr := newJaegerReceiver(jaegerAgent, config, nil, set)
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	jr := newJaegerReceiver(jaegerAgent, config, nil, params)
 
 	assert.Error(t, jr.Start(context.Background(), componenttest.NewNopHost()), "should not have been able to startTraceReception")
 
-	require.NoError(t, jr.Shutdown(context.Background()))
+	jr.Shutdown(context.Background())
 }
 
 func TestJaegerAgentUDP_ThriftBinary(t *testing.T) {
@@ -86,11 +86,11 @@ func TestJaegerAgentUDP_ThriftBinary_PortInUse(t *testing.T) {
 		AgentBinaryThriftPort:   int(port),
 		AgentBinaryThriftConfig: DefaultServerConfigUDP(),
 	}
-	set := componenttest.NewNopReceiverCreateSettings()
-	jr := newJaegerReceiver(jaegerAgent, config, nil, set)
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	jr := newJaegerReceiver(jaegerAgent, config, nil, params)
 
 	assert.NoError(t, jr.startAgent(componenttest.NewNopHost()), "Start failed")
-	t.Cleanup(func() { require.NoError(t, jr.Shutdown(context.Background())) })
+	defer jr.Shutdown(context.Background())
 
 	l, err := net.Listen("udp", fmt.Sprintf("localhost:%d", port))
 	assert.Error(t, err, "should not have been able to listen to the port")
@@ -106,12 +106,12 @@ func TestJaegerAgentUDP_ThriftBinary_InvalidPort(t *testing.T) {
 	config := &configuration{
 		AgentBinaryThriftPort: port,
 	}
-	set := componenttest.NewNopReceiverCreateSettings()
-	jr := newJaegerReceiver(jaegerAgent, config, nil, set)
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	jr := newJaegerReceiver(jaegerAgent, config, nil, params)
 
 	assert.Error(t, jr.Start(context.Background(), componenttest.NewNopHost()), "should not have been able to startTraceReception")
 
-	require.NoError(t, jr.Shutdown(context.Background()))
+	jr.Shutdown(context.Background())
 }
 
 func initializeGRPCTestServer(t *testing.T, beforeServe func(server *grpc.Server), opts ...grpc.ServerOption) (*grpc.Server, net.Addr) {
@@ -149,21 +149,14 @@ func TestJaegerHTTP(t *testing.T) {
 			},
 		},
 	}
-	set := componenttest.NewNopReceiverCreateSettings()
-	jr := newJaegerReceiver(jaegerAgent, config, nil, set)
-	t.Cleanup(func() { require.NoError(t, jr.Shutdown(context.Background())) })
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	jr := newJaegerReceiver(jaegerAgent, config, nil, params)
+	defer jr.Shutdown(context.Background())
 
 	assert.NoError(t, jr.Start(context.Background(), componenttest.NewNopHost()), "Start failed")
 
 	// allow http server to start
-	assert.Eventually(t, func() bool {
-		conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", port))
-		if err == nil && conn != nil {
-			conn.Close()
-			return true
-		}
-		return false
-	}, 10*time.Second, 5*time.Millisecond, "failed to wait for the port to be open")
+	assert.NoError(t, testutil.WaitForPort(t, port), "WaitForPort failed")
 
 	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/sampling?service=test", port))
 	assert.NoError(t, err, "should not have failed to make request")
@@ -187,9 +180,9 @@ func TestJaegerHTTP(t *testing.T) {
 func testJaegerAgent(t *testing.T, agentEndpoint string, receiverConfig *configuration) {
 	// 1. Create the Jaeger receiver aka "server"
 	sink := new(consumertest.TracesSink)
-	set := componenttest.NewNopReceiverCreateSettings()
-	jr := newJaegerReceiver(jaegerAgent, receiverConfig, sink, set)
-	t.Cleanup(func() { require.NoError(t, jr.Shutdown(context.Background())) })
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	jr := newJaegerReceiver(jaegerAgent, receiverConfig, sink, params)
+	defer jr.Shutdown(context.Background())
 
 	assert.NoError(t, jr.Start(context.Background(), componenttest.NewNopHost()), "Start failed")
 
@@ -205,9 +198,9 @@ func testJaegerAgent(t *testing.T, agentEndpoint string, receiverConfig *configu
 		require.NoError(t, jexp.EmitBatch(context.Background(), modelToThrift(batch)))
 	}
 
-	assert.Eventually(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		return sink.SpansCount() > 0
-	}, 10*time.Second, 5*time.Millisecond)
+	})
 
 	gotTraces := sink.AllTraces()
 	require.Equal(t, 1, len(gotTraces))
@@ -221,9 +214,9 @@ func newClientUDP(hostPort string, binary bool) (*agent.AgentClient, error) {
 	}
 	var protocolFactory thrift.TProtocolFactory
 	if binary {
-		protocolFactory = thrift.NewTBinaryProtocolFactoryConf(nil)
+		protocolFactory = thrift.NewTBinaryProtocolFactoryDefault()
 	} else {
-		protocolFactory = thrift.NewTCompactProtocolFactoryConf(nil)
+		protocolFactory = thrift.NewTCompactProtocolFactory()
 	}
 	return agent.NewAgentClientFactory(clientTransport, protocolFactory), nil
 }
@@ -231,13 +224,15 @@ func newClientUDP(hostPort string, binary bool) (*agent.AgentClient, error) {
 // Cannot use the testdata because timestamps are nanoseconds.
 func generateTraceData() pdata.Traces {
 	td := pdata.NewTraces()
-	rs := td.ResourceSpans().AppendEmpty()
-	rs.Resource().Attributes().UpsertString(conventions.AttributeServiceName, "test")
-	span := rs.InstrumentationLibrarySpans().AppendEmpty().Spans().AppendEmpty()
+	td.ResourceSpans().Resize(1)
+	td.ResourceSpans().At(0).Resource().Attributes().UpsertString(conventions.AttributeServiceName, "test")
+	td.ResourceSpans().At(0).InstrumentationLibrarySpans().Resize(1)
+	td.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0).Spans().Resize(1)
+	span := td.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0).Spans().At(0)
 	span.SetSpanID(pdata.NewSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7}))
 	span.SetTraceID(pdata.NewTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 7, 6, 5, 4, 3, 2, 1, 0}))
-	span.SetStartTimestamp(1581452772000000000)
-	span.SetEndTimestamp(1581452773000000000)
+	span.SetStartTime(1581452772000000000)
+	span.SetEndTime(1581452773000000000)
 	return td
 }
 

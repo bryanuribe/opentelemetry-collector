@@ -28,8 +28,8 @@ import (
 
 	"go.opentelemetry.io/collector/consumer/pdata"
 	otlptrace "go.opentelemetry.io/collector/internal/data/protogen/trace/v1"
-	"go.opentelemetry.io/collector/internal/occonventions"
 	"go.opentelemetry.io/collector/internal/testdata"
+	"go.opentelemetry.io/collector/translator/conventions"
 )
 
 func TestOcTraceStateToInternal(t *testing.T) {
@@ -311,24 +311,24 @@ func TestOcToInternal(t *testing.T) {
 	}{
 		{
 			name: "empty",
-			td:   pdata.NewTraces(),
+			td:   testdata.GenerateTraceDataEmpty(),
 		},
 
 		{
 			name: "one-empty-resource-spans",
-			td:   testdata.GenerateTracesOneEmptyResourceSpans(),
+			td:   testdata.GenerateTraceDataOneEmptyResourceSpans(),
 			node: ocNode,
 		},
 
 		{
 			name:     "no-libraries",
-			td:       testdata.GenerateTracesNoLibraries(),
+			td:       testdata.GenerateTraceDataNoLibraries(),
 			resource: ocResource1,
 		},
 
 		{
 			name:     "one-span-no-resource",
-			td:       testdata.GenerateTracesOneSpanNoResource(),
+			td:       testdata.GenerateTraceDataOneSpanNoResource(),
 			node:     ocNode,
 			resource: &ocresource.Resource{},
 			spans:    []*octrace.Span{ocSpan1},
@@ -336,7 +336,7 @@ func TestOcToInternal(t *testing.T) {
 
 		{
 			name:     "one-span",
-			td:       testdata.GenerateTracesOneSpan(),
+			td:       testdata.GenerateTraceDataOneSpan(),
 			node:     ocNode,
 			resource: ocResource1,
 			spans:    []*octrace.Span{ocSpan1},
@@ -344,7 +344,7 @@ func TestOcToInternal(t *testing.T) {
 
 		{
 			name:     "one-span-zeroed-parent-id",
-			td:       testdata.GenerateTracesOneSpan(),
+			td:       testdata.GenerateTraceDataOneSpan(),
 			node:     ocNode,
 			resource: ocResource1,
 			spans:    []*octrace.Span{ocSpanZeroedParentID},
@@ -352,7 +352,7 @@ func TestOcToInternal(t *testing.T) {
 
 		{
 			name:     "one-span-one-nil",
-			td:       testdata.GenerateTracesOneSpan(),
+			td:       testdata.GenerateTraceDataOneSpan(),
 			node:     ocNode,
 			resource: ocResource1,
 			spans:    []*octrace.Span{ocSpan1, nil},
@@ -360,7 +360,7 @@ func TestOcToInternal(t *testing.T) {
 
 		{
 			name:     "two-spans-same-resource",
-			td:       testdata.GenerateTracesTwoSpansSameResource(),
+			td:       testdata.GenerateTraceDataTwoSpansSameResource(),
 			node:     ocNode,
 			resource: ocResource1,
 			spans:    []*octrace.Span{ocSpan1, nil, ocSpan2},
@@ -368,7 +368,7 @@ func TestOcToInternal(t *testing.T) {
 
 		{
 			name:     "two-spans-same-resource-one-different",
-			td:       testdata.GenerateTracesTwoSpansSameResourceOneDifferent(),
+			td:       testdata.GenerateTraceDataTwoSpansSameResourceOneDifferent(),
 			node:     ocNode,
 			resource: ocResource1,
 			spans:    []*octrace.Span{ocSpan1, ocSpan2, ocSpan3},
@@ -376,7 +376,7 @@ func TestOcToInternal(t *testing.T) {
 
 		{
 			name:     "two-spans-and-separate-in-the-middle",
-			td:       testdata.GenerateTracesTwoSpansSameResourceOneDifferent(),
+			td:       testdata.GenerateTraceDataTwoSpansSameResourceOneDifferent(),
 			node:     ocNode,
 			resource: ocResource1,
 			spans:    []*octrace.Span{ocSpan1, ocSpan3, ocSpan2},
@@ -397,16 +397,16 @@ func TestOcSameProcessAsParentSpanToInternal(t *testing.T) {
 
 	ocSameProcessAsParentSpanToInternal(wrapperspb.Bool(false), span)
 	assert.Equal(t, 1, span.Attributes().Len())
-	v, ok := span.Attributes().Get(occonventions.AttributeSameProcessAsParentSpan)
+	v, ok := span.Attributes().Get(conventions.OCAttributeSameProcessAsParentSpan)
 	assert.True(t, ok)
-	assert.EqualValues(t, pdata.AttributeValueTypeBool, v.Type())
+	assert.EqualValues(t, pdata.AttributeValueBOOL, v.Type())
 	assert.False(t, v.BoolVal())
 
 	ocSameProcessAsParentSpanToInternal(wrapperspb.Bool(true), span)
 	assert.Equal(t, 1, span.Attributes().Len())
-	v, ok = span.Attributes().Get(occonventions.AttributeSameProcessAsParentSpan)
+	v, ok = span.Attributes().Get(conventions.OCAttributeSameProcessAsParentSpan)
 	assert.True(t, ok)
-	assert.EqualValues(t, pdata.AttributeValueTypeBool, v.Type())
+	assert.EqualValues(t, pdata.AttributeValueBOOL, v.Type())
 	assert.True(t, v.BoolVal())
 }
 

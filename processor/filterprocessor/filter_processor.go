@@ -115,30 +115,35 @@ func createMatcher(mp *filtermetric.MatchProperties) (filtermetric.Matcher, filt
 
 // ProcessMetrics filters the given metrics based off the filterMetricProcessor's filters.
 func (fmp *filterMetricProcessor) ProcessMetrics(_ context.Context, pdm pdata.Metrics) (pdata.Metrics, error) {
-	pdm.ResourceMetrics().RemoveIf(func(rm pdata.ResourceMetrics) bool {
+	rms := pdm.ResourceMetrics()
+	idx := newMetricIndex()
+	for i := 0; i < rms.Len(); i++ {
+		rm := rms.At(i)
+
 		keepMetricsForResource := fmp.shouldKeepMetricsForResource(rm.Resource())
 		if !keepMetricsForResource {
-			return true
+			continue
 		}
-		rm.InstrumentationLibraryMetrics().RemoveIf(func(ilm pdata.InstrumentationLibraryMetrics) bool {
-			ilm.Metrics().RemoveIf(func(m pdata.Metric) bool {
-				keep, err := fmp.shouldKeepMetric(m)
+
+		ilms := rm.InstrumentationLibraryMetrics()
+		for j := 0; j < ilms.Len(); j++ {
+			ms := ilms.At(j).Metrics()
+			for k := 0; k < ms.Len(); k++ {
+				keep, err := fmp.shouldKeepMetric(ms.At(k))
 				if err != nil {
 					fmp.logger.Error("shouldKeepMetric failed", zap.Error(err))
-					// don't `return`, keep the metric if there's an error
+					// don't `continue`, keep the metric if there's an error
 				}
-				return !keep
-			})
-			// Filter out empty InstrumentationLibraryMetrics
-			return ilm.Metrics().Len() == 0
-		})
-		// Filter out empty ResourceMetrics
-		return rm.InstrumentationLibraryMetrics().Len() == 0
-	})
-	if pdm.ResourceMetrics().Len() == 0 {
+				if keep {
+					idx.add(i, j, k)
+				}
+			}
+		}
+	}
+	if idx.isEmpty() {
 		return pdm, processorhelper.ErrSkipProcessingData
 	}
-	return pdm, nil
+	return idx.extract(pdm), nil
 }
 
 func (fmp *filterMetricProcessor) shouldKeepMetric(metric pdata.Metric) (bool, error) {

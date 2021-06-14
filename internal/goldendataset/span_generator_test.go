@@ -20,7 +20,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"go.opentelemetry.io/collector/consumer/pdata"
+	"go.opentelemetry.io/collector/internal/data"
+	otlptrace "go.opentelemetry.io/collector/internal/data/protogen/trace/v1"
 )
 
 func TestGenerateParentSpan(t *testing.T) {
@@ -35,12 +36,11 @@ func TestGenerateParentSpan(t *testing.T) {
 		Links:      SpanChildCountOne,
 		Status:     SpanStatusOk,
 	}
-	span := pdata.NewSpan()
-	fillSpan(traceID, pdata.NewSpanID([8]byte{}), "/gotest-parent", spanInputs, random, span)
-	assert.Equal(t, traceID, span.TraceID())
-	assert.True(t, span.ParentSpanID().IsEmpty())
-	assert.Equal(t, 11, span.Attributes().Len())
-	assert.Equal(t, pdata.StatusCodeOk, span.Status().Code())
+	span := GenerateSpan(traceID, data.NewSpanID([8]byte{}), "/gotest-parent", spanInputs, random)
+	assert.Equal(t, traceID, span.TraceId)
+	assert.True(t, span.ParentSpanId.IsEmpty())
+	assert.Equal(t, 11, len(span.Attributes))
+	assert.Equal(t, otlptrace.Status_STATUS_CODE_OK, span.Status.Code)
 }
 
 func TestGenerateChildSpan(t *testing.T) {
@@ -53,34 +53,28 @@ func TestGenerateChildSpan(t *testing.T) {
 		Kind:       SpanKindClient,
 		Attributes: SpanAttrDatabaseSQL,
 		Events:     SpanChildCountEmpty,
-		Links:      SpanChildCountEmpty,
+		Links:      SpanChildCountNil,
 		Status:     SpanStatusOk,
 	}
-	span := pdata.NewSpan()
-	fillSpan(traceID, parentID, "get_test_info", spanInputs, random, span)
-	assert.Equal(t, traceID, span.TraceID())
-	assert.Equal(t, parentID, span.ParentSpanID())
-	assert.Equal(t, 12, span.Attributes().Len())
-	assert.Equal(t, pdata.StatusCodeOk, span.Status().Code())
+	span := GenerateSpan(traceID, parentID, "get_test_info", spanInputs, random)
+	assert.Equal(t, traceID, span.TraceId)
+	assert.Equal(t, parentID, span.ParentSpanId)
+	assert.Equal(t, 12, len(span.Attributes))
+	assert.Equal(t, otlptrace.Status_STATUS_CODE_OK, span.Status.Code)
 }
 
 func TestGenerateSpans(t *testing.T) {
 	random := rand.Reader
 	count1 := 16
-	spans := pdata.NewSpanSlice()
-	err := appendSpans(count1, "testdata/generated_pict_pairs_spans.txt", random, spans)
-	assert.NoError(t, err)
-	assert.Equal(t, count1, spans.Len())
-
+	spans, nextPos, err := GenerateSpans(count1, 0, "testdata/generated_pict_pairs_spans.txt", random)
+	assert.Nil(t, err)
+	assert.Equal(t, count1, len(spans))
 	count2 := 256
-	spans = pdata.NewSpanSlice()
-	err = appendSpans(count2, "testdata/generated_pict_pairs_spans.txt", random, spans)
-	assert.NoError(t, err)
-	assert.Equal(t, count2, spans.Len())
-
+	spans, nextPos, err = GenerateSpans(count2, nextPos, "testdata/generated_pict_pairs_spans.txt", random)
+	assert.Nil(t, err)
+	assert.Equal(t, count2, len(spans))
 	count3 := 118
-	spans = pdata.NewSpanSlice()
-	err = appendSpans(count3, "testdata/generated_pict_pairs_spans.txt", random, spans)
-	assert.NoError(t, err)
-	assert.Equal(t, count3, spans.Len())
+	spans, _, err = GenerateSpans(count3, nextPos, "testdata/generated_pict_pairs_spans.txt", random)
+	assert.Nil(t, err)
+	assert.Equal(t, count3, len(spans))
 }

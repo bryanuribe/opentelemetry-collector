@@ -18,7 +18,7 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 )
@@ -28,7 +28,7 @@ const (
 	typeStr = "filter"
 )
 
-var processorCapabilities = consumer.Capabilities{MutatesData: true}
+var processorCapabilities = component.ProcessorCapabilities{MutatesConsumedData: false}
 
 // NewFactory returns a new factory for the Filter processor.
 func NewFactory() component.ProcessorFactory {
@@ -38,19 +38,22 @@ func NewFactory() component.ProcessorFactory {
 		processorhelper.WithMetrics(createMetricsProcessor))
 }
 
-func createDefaultConfig() config.Processor {
+func createDefaultConfig() configmodels.Processor {
 	return &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			TypeVal: typeStr,
+			NameVal: typeStr,
+		},
 	}
 }
 
 func createMetricsProcessor(
 	_ context.Context,
-	set component.ProcessorCreateSettings,
-	cfg config.Processor,
+	params component.ProcessorCreateParams,
+	cfg configmodels.Processor,
 	nextConsumer consumer.Metrics,
 ) (component.MetricsProcessor, error) {
-	fp, err := newFilterMetricProcessor(set.Logger, cfg.(*Config))
+	fp, err := newFilterMetricProcessor(params.Logger, cfg.(*Config))
 	if err != nil {
 		return nil, err
 	}

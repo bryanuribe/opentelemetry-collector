@@ -15,26 +15,13 @@
 package fileexporter
 
 import (
-	"errors"
-
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 )
 
 // Config defines configuration for file exporter.
 type Config struct {
-	config.ExporterSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+	configmodels.ExporterSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
 
 	// Path of the file to write to. Path is relative to current directory.
 	Path string `mapstructure:"path"`
-}
-
-var _ config.Exporter = (*Config)(nil)
-
-// Validate checks if the exporter configuration is valid
-func (cfg *Config) Validate() error {
-	if cfg.Path == "" {
-		return errors.New("path must be non-empty")
-	}
-
-	return nil
 }

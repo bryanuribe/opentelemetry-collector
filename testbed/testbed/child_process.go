@@ -187,7 +187,7 @@ func expandExeFileName(exeName string) string {
 	return buf.String()
 }
 
-// Start a child process.
+// start a child process.
 //
 // cp.AgentExePath defines the executable to run. If unspecified
 // "../../bin/otelcol_{{.GOOS}}_{{.GOARCH}}" will be used.
@@ -236,7 +236,6 @@ func (cp *ChildProcess) Start(params StartParams) error {
 		args = append(args, "--config")
 		args = append(args, cp.configFileName)
 	}
-	// #nosec
 	cp.cmd = exec.Command(exePath, args...)
 
 	// Capture standard output and standard error.
@@ -375,9 +374,7 @@ func (cp *ChildProcess) WatchResourceConsumption() error {
 			cp.fetchCPUUsage()
 
 			if err := cp.checkAllowedResourceUsage(); err != nil {
-				if _, errStop := cp.Stop(); errStop != nil {
-					log.Printf("Failed to stop child process: %v", err)
-				}
+				cp.Stop()
 				return err
 			}
 

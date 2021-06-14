@@ -24,7 +24,6 @@ import (
 
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/internal/testdata"
-	"go.opentelemetry.io/collector/translator/conventions"
 	tracetranslator "go.opentelemetry.io/collector/translator/trace"
 )
 
@@ -84,7 +83,7 @@ func TestThriftBatchToInternalTraces(t *testing.T) {
 		{
 			name: "empty",
 			jb:   &jaeger.Batch{},
-			td:   pdata.NewTraces(),
+			td:   testdata.GenerateTraceDataEmpty(),
 		},
 
 		{
@@ -92,7 +91,7 @@ func TestThriftBatchToInternalTraces(t *testing.T) {
 			jb: &jaeger.Batch{
 				Process: generateThriftProcess(),
 			},
-			td: testdata.GenerateTracesNoLibraries(),
+			td: testdata.GenerateTraceDataNoLibraries(),
 		},
 
 		{
@@ -102,7 +101,7 @@ func TestThriftBatchToInternalTraces(t *testing.T) {
 					generateThriftSpan(),
 				},
 			},
-			td: generateTracesOneSpanNoResource(),
+			td: generateTraceDataOneSpanNoResource(),
 		},
 		{
 			name: "two-spans-child-parent",
@@ -112,7 +111,7 @@ func TestThriftBatchToInternalTraces(t *testing.T) {
 					generateThriftChildSpan(),
 				},
 			},
-			td: generateTracesTwoSpansChildParent(),
+			td: generateTraceDataTwoSpansChildParent(),
 		},
 
 		{
@@ -123,7 +122,7 @@ func TestThriftBatchToInternalTraces(t *testing.T) {
 					generateThriftFollowerSpan(),
 				},
 			},
-			td: generateTracesTwoSpansWithFollower(),
+			td: generateTraceDataTwoSpansWithFollower(),
 		},
 	}
 
@@ -229,7 +228,7 @@ func generateThriftChildSpan() *jaeger.Span {
 		Duration:      spanEndTs - spanStartTs,
 		Tags: []*jaeger.Tag{
 			{
-				Key:   conventions.AttributeHTTPStatusCode,
+				Key:   tracetranslator.TagHTTPStatusCode,
 				VType: jaeger.TagType_LONG,
 				VLong: &notFoundAttrVal,
 			},

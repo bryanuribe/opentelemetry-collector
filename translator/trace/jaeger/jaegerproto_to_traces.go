@@ -25,8 +25,6 @@ import (
 	"github.com/jaegertracing/jaeger/thrift-gen/jaeger"
 
 	"go.opentelemetry.io/collector/consumer/pdata"
-	idutils "go.opentelemetry.io/collector/internal/idutils"
-	"go.opentelemetry.io/collector/internal/occonventions"
 	"go.opentelemetry.io/collector/translator/conventions"
 	tracetranslator "go.opentelemetry.io/collector/translator/trace"
 )
@@ -69,7 +67,9 @@ func ProtoBatchToInternalTraces(batch model.Batch) pdata.Traces {
 		return traceData
 	}
 
-	protoBatchToResourceSpans(batch, traceData.ResourceSpans().AppendEmpty())
+	rss := traceData.ResourceSpans()
+	rss.Resize(1)
+	protoBatchToResourceSpans(batch, rss.At(0))
 
 	return traceData
 }
@@ -85,13 +85,8 @@ func protoBatchToResourceSpans(batch model.Batch, dest pdata.ResourceSpans) {
 
 	groupByLibrary := jSpansToInternal(jSpans)
 	ilss := dest.InstrumentationLibrarySpans()
-	for library, spans := range groupByLibrary {
-		ils := ilss.AppendEmpty()
-		if library.name != "" {
-			ils.InstrumentationLibrary().SetName(library.name)
-			ils.InstrumentationLibrary().SetVersion(library.version)
-		}
-		spans.MoveAndAppendTo(ils.Spans())
+	for _, v := range groupByLibrary {
+		ilss.Append(v)
 	}
 }
 
@@ -107,12 +102,11 @@ func jProcessToInternalResource(process *model.Process, dest pdata.Resource) {
 	}
 
 	attrs := dest.Attributes()
-	attrs.Clear()
 	if serviceName != "" {
-		attrs.EnsureCapacity(len(tags) + 1)
+		attrs.InitEmptyWithCapacity(len(tags) + 1)
 		attrs.UpsertString(conventions.AttributeServiceName, serviceName)
 	} else {
-		attrs.EnsureCapacity(len(tags))
+		attrs.InitEmptyWithCapacity(len(tags))
 	}
 	jTagsToInternalAttributes(tags, attrs)
 
@@ -134,27 +128,32 @@ func translateHostnameAttr(attrs pdata.AttributeMap) {
 // translateHostnameAttr translates "jaeger.version" atttribute
 func translateJaegerVersionAttr(attrs pdata.AttributeMap) {
 	jaegerVersion, jaegerVersionFound := attrs.Get("jaeger.version")
-	_, exporterVersionFound := attrs.Get(occonventions.AttributeExporterVersion)
+	_, exporterVersionFound := attrs.Get(conventions.OCAttributeExporterVersion)
 	if jaegerVersionFound && !exporterVersionFound {
-		attrs.InsertString(occonventions.AttributeExporterVersion, "Jaeger-"+jaegerVersion.StringVal())
+		attrs.InsertString(conventions.OCAttributeExporterVersion, "Jaeger-"+jaegerVersion.StringVal())
 		attrs.Delete("jaeger.version")
 	}
 }
 
-func jSpansToInternal(spans []*model.Span) map[instrumentationLibrary]pdata.SpanSlice {
-	spansByLibrary := make(map[instrumentationLibrary]pdata.SpanSlice)
+func jSpansToInternal(spans []*model.Span) map[instrumentationLibrary]pdata.InstrumentationLibrarySpans {
+	spansByLibrary := make(map[instrumentationLibrary]pdata.InstrumentationLibrarySpans)
 
 	for _, span := range spans {
 		if span == nil || reflect.DeepEqual(span, blankJaegerProtoSpan) {
 			continue
 		}
 		pSpan, library := jSpanToInternal(span)
-		ss, found := spansByLibrary[library]
+		ils, found := spansByLibrary[library]
 		if !found {
-			ss = pdata.NewSpanSlice()
-			spansByLibrary[library] = ss
+			ils = pdata.NewInstrumentationLibrarySpans()
+			spansByLibrary[library] = ils
+
+			if library.name != "" {
+				ils.InstrumentationLibrary().SetName(library.name)
+				ils.InstrumentationLibrary().SetVersion(library.version)
+			}
 		}
-		ss.Append(pSpan)
+		ils.Spans().Append(pSpan)
 	}
 	return spansByLibrary
 }
@@ -165,20 +164,19 @@ type instrumentationLibrary struct {
 
 func jSpanToInternal(span *model.Span) (pdata.Span, instrumentationLibrary) {
 	dest := pdata.NewSpan()
-	dest.SetTraceID(idutils.UInt64ToTraceID(span.TraceID.High, span.TraceID.Low))
-	dest.SetSpanID(idutils.UInt64ToSpanID(uint64(span.SpanID)))
+	dest.SetTraceID(tracetranslator.UInt64ToTraceID(span.TraceID.High, span.TraceID.Low))
+	dest.SetSpanID(tracetranslator.UInt64ToSpanID(uint64(span.SpanID)))
 	dest.SetName(span.OperationName)
-	dest.SetStartTimestamp(pdata.TimestampFromTime(span.StartTime))
-	dest.SetEndTimestamp(pdata.TimestampFromTime(span.StartTime.Add(span.Duration)))
+	dest.SetStartTime(pdata.TimestampFromTime(span.StartTime))
+	dest.SetEndTime(pdata.TimestampFromTime(span.StartTime.Add(span.Duration)))
 
 	parentSpanID := span.ParentSpanID()
 	if parentSpanID != model.SpanID(0) {
-		dest.SetParentSpanID(idutils.UInt64ToSpanID(uint64(parentSpanID)))
+		dest.SetParentSpanID(tracetranslator.UInt64ToSpanID(uint64(parentSpanID)))
 	}
 
 	attrs := dest.Attributes()
-	attrs.Clear()
-	attrs.EnsureCapacity(len(span.Tags))
+	attrs.InitEmptyWithCapacity(len(span.Tags))
 	jTagsToInternalAttributes(span.Tags, attrs)
 	setInternalSpanStatus(attrs, dest.Status())
 	if spanKindAttr, ok := attrs.Get(tracetranslator.TagSpanKind); ok {
@@ -252,7 +250,7 @@ func setInternalSpanStatus(attrs pdata.AttributeMap, dest pdata.SpanStatus) {
 			statusMessage = msgAttr.StringVal()
 			attrs.Delete(tracetranslator.TagStatusMsg)
 		}
-	} else if httpCodeAttr, ok := attrs.Get(conventions.AttributeHTTPStatusCode); ok {
+	} else if httpCodeAttr, ok := attrs.Get(tracetranslator.TagHTTPStatusCode); ok {
 		statusExists = true
 		if code, err := getStatusCodeFromHTTPStatusAttr(httpCodeAttr); err == nil {
 
@@ -276,9 +274,9 @@ func setInternalSpanStatus(attrs pdata.AttributeMap, dest pdata.SpanStatus) {
 func getStatusCodeValFromAttr(attrVal pdata.AttributeValue) (int, error) {
 	var codeVal int64
 	switch attrVal.Type() {
-	case pdata.AttributeValueTypeInt:
+	case pdata.AttributeValueINT:
 		codeVal = attrVal.IntVal()
-	case pdata.AttributeValueTypeString:
+	case pdata.AttributeValueSTRING:
 		i, err := strconv.Atoi(attrVal.StringVal())
 		if err != nil {
 			return 0, err
@@ -305,17 +303,17 @@ func getStatusCodeFromHTTPStatusAttr(attrVal pdata.AttributeValue) (pdata.Status
 func jSpanKindToInternal(spanKind string) pdata.SpanKind {
 	switch spanKind {
 	case "client":
-		return pdata.SpanKindClient
+		return pdata.SpanKindCLIENT
 	case "server":
-		return pdata.SpanKindServer
+		return pdata.SpanKindSERVER
 	case "producer":
-		return pdata.SpanKindProducer
+		return pdata.SpanKindPRODUCER
 	case "consumer":
-		return pdata.SpanKindConsumer
+		return pdata.SpanKindCONSUMER
 	case "internal":
-		return pdata.SpanKindInternal
+		return pdata.SpanKindINTERNAL
 	}
-	return pdata.SpanKindUnspecified
+	return pdata.SpanKindUNSPECIFIED
 }
 
 func jLogsToSpanEvents(logs []model.Log, dest pdata.SpanEventSlice) {
@@ -334,8 +332,7 @@ func jLogsToSpanEvents(logs []model.Log, dest pdata.SpanEventSlice) {
 		}
 
 		attrs := event.Attributes()
-		attrs.Clear()
-		attrs.EnsureCapacity(len(log.Fields))
+		attrs.InitEmptyWithCapacity(len(log.Fields))
 		jTagsToInternalAttributes(log.Fields, attrs)
 		if name, ok := attrs.Get(tracetranslator.TagMessage); ok {
 			event.SetName(name.StringVal())
@@ -358,8 +355,8 @@ func jReferencesToSpanLinks(refs []model.SpanRef, excludeParentID model.SpanID, 
 			continue
 		}
 
-		link.SetTraceID(idutils.UInt64ToTraceID(ref.TraceID.High, ref.TraceID.Low))
-		link.SetSpanID(idutils.UInt64ToSpanID(uint64(ref.SpanID)))
+		link.SetTraceID(tracetranslator.UInt64ToTraceID(ref.TraceID.High, ref.TraceID.Low))
+		link.SetSpanID(tracetranslator.UInt64ToSpanID(uint64(ref.SpanID)))
 		i++
 	}
 

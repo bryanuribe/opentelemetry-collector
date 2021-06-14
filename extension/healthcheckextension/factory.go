@@ -18,18 +18,13 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/config/confignet"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/extension/extensionhelper"
 )
 
 const (
 	// The value of extension "type" in configuration.
 	typeStr = "health_check"
-
-	// Use 0.0.0.0 to make the health check endpoint accessible
-	// in container orchestration environments like Kubernetes.
-	defaultEndpoint = "0.0.0.0:13133"
 )
 
 // NewFactory creates a factory for HealthCheck extension.
@@ -40,17 +35,18 @@ func NewFactory() component.ExtensionFactory {
 		createExtension)
 }
 
-func createDefaultConfig() config.Extension {
+func createDefaultConfig() configmodels.Extension {
 	return &Config{
-		ExtensionSettings: config.NewExtensionSettings(config.NewID(typeStr)),
-		TCPAddr: confignet.TCPAddr{
-			Endpoint: defaultEndpoint,
+		ExtensionSettings: configmodels.ExtensionSettings{
+			TypeVal: typeStr,
+			NameVal: typeStr,
 		},
+		Port: 13133,
 	}
 }
 
-func createExtension(_ context.Context, set component.ExtensionCreateSettings, cfg config.Extension) (component.Extension, error) {
+func createExtension(_ context.Context, params component.ExtensionCreateParams, cfg configmodels.Extension) (component.Extension, error) {
 	config := cfg.(*Config)
 
-	return newServer(*config, set.Logger), nil
+	return newServer(*config, params.Logger), nil
 }

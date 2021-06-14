@@ -18,16 +18,32 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	otlpresource "go.opentelemetry.io/collector/internal/data/protogen/resource/v1"
 )
 
 func TestGenerateResource(t *testing.T) {
-	resourceIds := []PICTInputResource{ResourceEmpty, ResourceVMOnPrem, ResourceVMCloud, ResourceK8sOnPrem, ResourceK8sCloud, ResourceFaas, ResourceExec}
+	resourceIds := []PICTInputResource{ResourceNil, ResourceEmpty, ResourceVMOnPrem, ResourceVMCloud, ResourceK8sOnPrem,
+		ResourceK8sCloud, ResourceFaas, ResourceExec}
 	for _, rscID := range resourceIds {
 		rsc := GenerateResource(rscID)
-		if rscID == ResourceEmpty {
-			assert.Equal(t, 0, rsc.Attributes().Len())
+		if rscID == ResourceNil {
+			assert.Nil(t, rsc.Attributes)
 		} else {
-			assert.True(t, rsc.Attributes().Len() > 0)
+			assert.NotNil(t, rsc.Attributes)
+		}
+		// test marshal/unmarshal
+		bytes, err := rsc.Marshal()
+		if err != nil {
+			assert.Fail(t, err.Error())
+		}
+		if len(bytes) > 0 {
+			copy := &otlpresource.Resource{}
+			err = copy.Unmarshal(bytes)
+			if err != nil {
+				assert.Fail(t, err.Error())
+			}
+			assert.EqualValues(t, len(rsc.Attributes), len(copy.Attributes))
 		}
 	}
 }

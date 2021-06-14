@@ -93,9 +93,10 @@ func (mf *metricFamily) updateLabelKeys(ls labels.Labels) {
 				mf.labelKeys[l.Name] = true
 				// use insertion sort to maintain order
 				i := sort.SearchStrings(mf.labelKeysOrdered, l.Name)
-				mf.labelKeysOrdered = append(mf.labelKeysOrdered, "")
-				copy(mf.labelKeysOrdered[i+1:], mf.labelKeysOrdered[i:])
-				mf.labelKeysOrdered[i] = l.Name
+				labelKeys := append(mf.labelKeysOrdered, "")
+				copy(labelKeys[i+1:], labelKeys[i:])
+				labelKeys[i] = l.Name
+				mf.labelKeysOrdered = labelKeys
 			}
 		}
 	}
@@ -260,7 +261,7 @@ func (mg *metricGroup) sortPoints() {
 }
 
 func (mg *metricGroup) toDistributionTimeSeries(orderedLabelKeys []string) *metricspb.TimeSeries {
-	if !(mg.hasCount) || len(mg.complexValue) == 0 {
+	if !(mg.hasCount && mg.hasSum) || len(mg.complexValue) == 0 {
 		return nil
 	}
 	mg.sortPoints()
@@ -307,10 +308,10 @@ func (mg *metricGroup) toDistributionTimeSeries(orderedLabelKeys []string) *metr
 }
 
 func (mg *metricGroup) toSummaryTimeSeries(orderedLabelKeys []string) *metricspb.TimeSeries {
-	// expecting count to be provided, however, in the following two cases, they can be missed.
+	// expecting count and sum to be provided, however, in the following two cases, they can be missed.
 	// 1. data is corrupted
 	// 2. ignored by startValue evaluation
-	if !(mg.hasCount) {
+	if !(mg.hasCount && mg.hasSum) {
 		return nil
 	}
 	mg.sortPoints()

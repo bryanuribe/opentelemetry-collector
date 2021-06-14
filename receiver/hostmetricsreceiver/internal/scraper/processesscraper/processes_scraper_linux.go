@@ -32,7 +32,9 @@ func appendUnixSystemSpecificProcessesMetrics(metrics pdata.MetricSlice, startIn
 
 func initializeProcessesCreatedMetric(metric pdata.Metric, now pdata.Timestamp, misc *load.MiscStat) {
 	metadata.Metrics.SystemProcessesCreated.Init(metric)
-	ddp := metric.IntSum().DataPoints().AppendEmpty()
-	ddp.SetTimestamp(now)
-	ddp.SetValue(int64(misc.ProcsCreated))
+
+	ddps := metric.IntSum().DataPoints()
+	ddps.Resize(1)
+	ddps.At(0).SetTimestamp(now)
+	ddps.At(0).SetValue(int64(misc.ProcsCreated))
 }

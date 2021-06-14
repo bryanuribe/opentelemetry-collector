@@ -20,7 +20,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/configcheck"
 	"go.opentelemetry.io/collector/config/configtest"
@@ -37,9 +39,10 @@ func TestCreateReceiver(t *testing.T) {
 
 	// The default config does not provide scrape_config so we expect that metrics receiver
 	// creation must also fail.
-	creationSet := componenttest.NewNopReceiverCreateSettings()
-	mReceiver, _ := createMetricsReceiver(context.Background(), creationSet, cfg, nil)
-	assert.NotNil(t, mReceiver)
+	creationParams := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	mReceiver, err := createMetricsReceiver(context.Background(), creationParams, cfg, nil)
+	assert.Equal(t, err, errNilScrapeConfig)
+	assert.Nil(t, mReceiver)
 }
 
 func TestFactoryCanParseServiceDiscoveryConfigs(t *testing.T) {
@@ -48,7 +51,7 @@ func TestFactoryCanParseServiceDiscoveryConfigs(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Receivers[typeStr] = factory
-	_, err = configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config_sd.yaml"), factories)
+	_, err = configtest.LoadConfigFile(t, path.Join(".", "testdata", "config_sd.yaml"), factories)
 
 	assert.NoError(t, err)
 }

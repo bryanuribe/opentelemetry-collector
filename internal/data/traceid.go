@@ -57,7 +57,7 @@ func (tid TraceID) Equal(that TraceID) bool {
 	return tid.id == that.id
 }
 
-// IsEmpty returns true if id contains at leas one non-zero byte.
+// IsValid returns true if id contains at leas one non-zero byte.
 func (tid TraceID) IsEmpty() bool {
 	return tid.id == [16]byte{}
 }

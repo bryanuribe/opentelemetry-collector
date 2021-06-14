@@ -34,11 +34,11 @@ Example:
 ```yaml
 exporters:
   otlp:
-    endpoint: otelcol2:4317
+    endpoint: otelcol2:55680
     cert_file: file.cert
     key_file: file.key
   otlp/2:
-    endpoint: otelcol2:4317
+    endpoint: otelcol2:55680
     insecure: true
 ```
 

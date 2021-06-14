@@ -21,9 +21,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
-	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configcheck"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configtls"
@@ -51,35 +51,32 @@ func TestCreateMetricsExporter(t *testing.T) {
 	cfg := factory.CreateDefaultConfig().(*Config)
 	cfg.HTTPClientSettings.Endpoint = "http://" + testutil.GetAvailableLocalAddress(t)
 
-	set := componenttest.NewNopExporterCreateSettings()
-	oexp, err := factory.CreateMetricsExporter(context.Background(), set, cfg)
+	creationParams := component.ExporterCreateParams{Logger: zap.NewNop()}
+	oexp, err := factory.CreateMetricsExporter(context.Background(), creationParams, cfg)
 	require.Nil(t, err)
 	require.NotNil(t, oexp)
 }
 
-func TestCreateTracesExporter(t *testing.T) {
+func TestCreateTraceExporter(t *testing.T) {
 	endpoint := "http://" + testutil.GetAvailableLocalAddress(t)
 
 	tests := []struct {
-		name             string
-		config           Config
-		mustFailOnCreate bool
-		mustFailOnStart  bool
+		name     string
+		config   Config
+		mustFail bool
 	}{
 		{
 			name: "NoEndpoint",
 			config: Config{
-				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
 				HTTPClientSettings: confighttp.HTTPClientSettings{
 					Endpoint: "",
 				},
 			},
-			mustFailOnCreate: true,
+			mustFail: true,
 		},
 		{
 			name: "UseSecure",
 			config: Config{
-				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
 				HTTPClientSettings: confighttp.HTTPClientSettings{
 					Endpoint: endpoint,
 					TLSSetting: configtls.TLSClientSetting{
@@ -91,7 +88,6 @@ func TestCreateTracesExporter(t *testing.T) {
 		{
 			name: "Headers",
 			config: Config{
-				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
 				HTTPClientSettings: confighttp.HTTPClientSettings{
 					Endpoint: endpoint,
 					Headers: map[string]string{
@@ -104,7 +100,6 @@ func TestCreateTracesExporter(t *testing.T) {
 		{
 			name: "CaCert",
 			config: Config{
-				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
 				HTTPClientSettings: confighttp.HTTPClientSettings{
 					Endpoint: endpoint,
 					TLSSetting: configtls.TLSClientSetting{
@@ -118,7 +113,6 @@ func TestCreateTracesExporter(t *testing.T) {
 		{
 			name: "CertPemFileError",
 			config: Config{
-				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
 				HTTPClientSettings: confighttp.HTTPClientSettings{
 					Endpoint: endpoint,
 					TLSSetting: configtls.TLSClientSetting{
@@ -128,33 +122,28 @@ func TestCreateTracesExporter(t *testing.T) {
 					},
 				},
 			},
-			mustFailOnCreate: false,
-			mustFailOnStart:  true,
+			mustFail: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			factory := NewFactory()
-			set := componenttest.NewNopExporterCreateSettings()
-			consumer, err := factory.CreateTracesExporter(context.Background(), set, &tt.config)
+			creationParams := component.ExporterCreateParams{Logger: zap.NewNop()}
+			consumer, err := factory.CreateTracesExporter(context.Background(), creationParams, &tt.config)
 
-			if tt.mustFailOnCreate {
+			if tt.mustFail {
 				assert.Error(t, err)
-				return
-			}
-			assert.NoError(t, err)
-			assert.NotNil(t, consumer)
-			err = consumer.Start(context.Background(), componenttest.NewNopHost())
-			if tt.mustFailOnStart {
-				assert.Error(t, err)
-			}
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, consumer)
 
-			err = consumer.Shutdown(context.Background())
-			if err != nil {
-				// Since the endpoint of OTLP exporter doesn't actually exist,
-				// exporter may already stop because it cannot connect.
-				assert.Equal(t, err.Error(), "rpc error: code = Canceled desc = grpc: the client connection is closing")
+				err = consumer.Shutdown(context.Background())
+				if err != nil {
+					// Since the endpoint of OTLP exporter doesn't actually exist,
+					// exporter may already stop because it cannot connect.
+					assert.Equal(t, err.Error(), "rpc error: code = Canceled desc = grpc: the client connection is closing")
+				}
 			}
 		})
 	}
@@ -165,8 +154,8 @@ func TestCreateLogsExporter(t *testing.T) {
 	cfg := factory.CreateDefaultConfig().(*Config)
 	cfg.HTTPClientSettings.Endpoint = "http://" + testutil.GetAvailableLocalAddress(t)
 
-	set := componenttest.NewNopExporterCreateSettings()
-	oexp, err := factory.CreateLogsExporter(context.Background(), set, cfg)
+	creationParams := component.ExporterCreateParams{Logger: zap.NewNop()}
+	oexp, err := factory.CreateLogsExporter(context.Background(), creationParams, cfg)
 	require.Nil(t, err)
 	require.NotNil(t, oexp)
 }

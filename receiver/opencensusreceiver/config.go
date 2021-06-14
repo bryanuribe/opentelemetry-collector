@@ -15,13 +15,14 @@
 package opencensusreceiver
 
 import (
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configgrpc"
+	"go.opentelemetry.io/collector/config/configmodels"
 )
 
 // Config defines configuration for OpenCensus receiver.
 type Config struct {
-	config.ReceiverSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+	configmodels.ReceiverSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+
 	// Configures the receiver server protocol.
 	configgrpc.GRPCServerSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
 
@@ -32,20 +33,19 @@ type Config struct {
 	CorsOrigins []string `mapstructure:"cors_allowed_origins"`
 }
 
-func (cfg *Config) buildOptions() []ocOption {
+func (rOpts *Config) buildOptions() ([]ocOption, error) {
 	var opts []ocOption
-	if len(cfg.CorsOrigins) > 0 {
-		opts = append(opts, withCorsOrigins(cfg.CorsOrigins))
+	if len(rOpts.CorsOrigins) > 0 {
+		opts = append(opts, withCorsOrigins(rOpts.CorsOrigins))
 	}
 
-	opts = append(opts, withGRPCServerSettings(cfg.GRPCServerSettings))
+	grpcServerOptions, err := rOpts.GRPCServerSettings.ToServerOption()
+	if err != nil {
+		return nil, err
+	}
+	if len(grpcServerOptions) > 0 {
+		opts = append(opts, withGRPCServerOptions(grpcServerOptions...))
+	}
 
-	return opts
-}
-
-var _ config.Receiver = (*Config)(nil)
-
-// Validate checks the receiver configuration is valid
-func (cfg *Config) Validate() error {
-	return nil
+	return opts, nil
 }

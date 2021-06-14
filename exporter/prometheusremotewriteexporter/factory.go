@@ -19,8 +19,8 @@ import (
 	"errors"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
@@ -29,7 +29,6 @@ const (
 	typeStr = "prometheusremotewrite"
 )
 
-// NewFactory creates a new Prometheus Remote Write exporter.
 func NewFactory() component.ExporterFactory {
 	return exporterhelper.NewFactory(
 		typeStr,
@@ -37,49 +36,48 @@ func NewFactory() component.ExporterFactory {
 		exporterhelper.WithMetrics(createMetricsExporter))
 }
 
-func createMetricsExporter(_ context.Context, set component.ExporterCreateSettings,
-	cfg config.Exporter) (component.MetricsExporter, error) {
+func createMetricsExporter(_ context.Context, params component.ExporterCreateParams,
+	cfg configmodels.Exporter) (component.MetricsExporter, error) {
 
 	prwCfg, ok := cfg.(*Config)
 	if !ok {
 		return nil, errors.New("invalid configuration")
 	}
 
-	prwe, err := NewPRWExporter(prwCfg, set.BuildInfo)
+	client, err := prwCfg.HTTPClientSettings.ToClient()
 	if err != nil {
 		return nil, err
 	}
 
-	// Don't allow users to configure the queue.
-	// See https://github.com/open-telemetry/opentelemetry-collector/issues/2949.
-	// Prometheus remote write samples needs to be in chronological
-	// order for each timeseries. If we shard the incoming metrics
-	// without considering this limitation, we experience
-	// "out of order samples" errors.
-	return exporterhelper.NewMetricsExporter(
+	prwe, err := NewPrwExporter(prwCfg.Namespace, prwCfg.HTTPClientSettings.Endpoint, client, prwCfg.ExternalLabels)
+	if err != nil {
+		return nil, err
+	}
+
+	prwexp, err := exporterhelper.NewMetricsExporter(
 		cfg,
-		set.Logger,
+		params.Logger,
 		prwe.PushMetrics,
 		exporterhelper.WithTimeout(prwCfg.TimeoutSettings),
-		exporterhelper.WithQueue(exporterhelper.QueueSettings{
-			Enabled:      true,
-			NumConsumers: 1,
-			QueueSize:    prwCfg.RemoteWriteQueue.QueueSize,
-		}),
+		exporterhelper.WithQueue(prwCfg.QueueSettings),
 		exporterhelper.WithRetry(prwCfg.RetrySettings),
-		exporterhelper.WithResourceToTelemetryConversion(prwCfg.ResourceToTelemetrySettings),
-		exporterhelper.WithStart(prwe.Start),
 		exporterhelper.WithShutdown(prwe.Shutdown),
 	)
+
+	return prwexp, err
 }
 
-func createDefaultConfig() config.Exporter {
+func createDefaultConfig() configmodels.Exporter {
 	return &Config{
-		ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
-		Namespace:        "",
-		ExternalLabels:   map[string]string{},
-		TimeoutSettings:  exporterhelper.DefaultTimeoutSettings(),
-		RetrySettings:    exporterhelper.DefaultRetrySettings(),
+		ExporterSettings: configmodels.ExporterSettings{
+			TypeVal: typeStr,
+			NameVal: typeStr,
+		},
+		Namespace:       "",
+		ExternalLabels:  map[string]string{},
+		TimeoutSettings: exporterhelper.DefaultTimeoutSettings(),
+		RetrySettings:   exporterhelper.DefaultRetrySettings(),
+		QueueSettings:   exporterhelper.DefaultQueueSettings(),
 		HTTPClientSettings: confighttp.HTTPClientSettings{
 			Endpoint: "http://some.url:9411/api/prom/push",
 			// We almost read 0 bytes, so no need to tune ReadBufferSize.
@@ -87,11 +85,6 @@ func createDefaultConfig() config.Exporter {
 			WriteBufferSize: 512 * 1024,
 			Timeout:         exporterhelper.DefaultTimeoutSettings().Timeout,
 			Headers:         map[string]string{},
-		},
-		// TODO(jbd): Adjust the default queue size.
-		RemoteWriteQueue: RemoteWriteQueue{
-			QueueSize:    10000,
-			NumConsumers: 5,
 		},
 	}
 }

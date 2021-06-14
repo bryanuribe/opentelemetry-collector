@@ -20,47 +20,61 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"go.opentelemetry.io/collector/component/componenterror"
-	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/config/configerror"
+	"go.opentelemetry.io/collector/config/configmodels"
+	"go.opentelemetry.io/collector/consumer"
 )
 
 type TestProcessorFactory struct {
-	BaseProcessorFactory
 	name string
 }
 
 // Type gets the type of the Processor config created by this factory.
-func (f *TestProcessorFactory) Type() config.Type {
-	return config.Type(f.name)
+func (f *TestProcessorFactory) Type() configmodels.Type {
+	return configmodels.Type(f.name)
 }
 
 // CreateDefaultConfig creates the default configuration for the Processor.
-func (f *TestProcessorFactory) CreateDefaultConfig() config.Processor {
+func (f *TestProcessorFactory) CreateDefaultConfig() configmodels.Processor {
 	return nil
 }
 
-func TestMakeProcessorFactoryMap(t *testing.T) {
+// CreateTraceProcessor creates a trace processor based on this config.
+func (f *TestProcessorFactory) CreateTracesProcessor(context.Context, ProcessorCreateParams, configmodels.Processor, consumer.Traces) (TracesProcessor, error) {
+	return nil, configerror.ErrDataTypeIsNotSupported
+}
+
+// CreateMetricsProcessor creates a metrics processor based on this config.
+func (f *TestProcessorFactory) CreateMetricsProcessor(context.Context, ProcessorCreateParams, configmodels.Processor, consumer.Metrics) (MetricsProcessor, error) {
+	return nil, configerror.ErrDataTypeIsNotSupported
+}
+
+// CreateMetricsProcessor creates a metrics processor based on this config.
+func (f *TestProcessorFactory) CreateLogsProcessor(context.Context, ProcessorCreateParams, configmodels.Processor, consumer.Logs) (LogsProcessor, error) {
+	return nil, configerror.ErrDataTypeIsNotSupported
+}
+
+func TestFactoriesBuilder(t *testing.T) {
 	type testCase struct {
 		in  []ProcessorFactory
-		out map[config.Type]ProcessorFactory
+		out map[configmodels.Type]ProcessorFactory
 	}
 
 	testCases := []testCase{
 		{
 			in: []ProcessorFactory{
-				&TestProcessorFactory{name: "p1"},
-				&TestProcessorFactory{name: "p2"},
+				&TestProcessorFactory{"p1"},
+				&TestProcessorFactory{"p2"},
 			},
-			out: map[config.Type]ProcessorFactory{
-				"p1": &TestProcessorFactory{name: "p1"},
-				"p2": &TestProcessorFactory{name: "p2"},
+			out: map[configmodels.Type]ProcessorFactory{
+				"p1": &TestProcessorFactory{"p1"},
+				"p2": &TestProcessorFactory{"p2"},
 			},
 		},
 		{
 			in: []ProcessorFactory{
-				&TestProcessorFactory{name: "p1"},
-				&TestProcessorFactory{name: "p1"},
+				&TestProcessorFactory{"p1"},
+				&TestProcessorFactory{"p1"},
 			},
 		},
 	}
@@ -74,22 +88,4 @@ func TestMakeProcessorFactoryMap(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, c.out, out)
 	}
-}
-
-func TestBaseProcessorFactory(t *testing.T) {
-	bpf := BaseProcessorFactory{}
-	assert.Panics(t, func() {
-		bpf.Type()
-	})
-	assert.Panics(t, func() {
-		bpf.CreateDefaultConfig()
-	})
-	assert.NotPanics(t, bpf.unexportedProcessor)
-	defaultCfg := config.NewProcessorSettings(config.NewID("nop"))
-	_, err := bpf.CreateTracesProcessor(context.Background(), ProcessorCreateSettings{}, &defaultCfg, consumertest.NewNop())
-	assert.ErrorIs(t, err, componenterror.ErrDataTypeIsNotSupported)
-	_, err = bpf.CreateMetricsProcessor(context.Background(), ProcessorCreateSettings{}, &defaultCfg, consumertest.NewNop())
-	assert.ErrorIs(t, err, componenterror.ErrDataTypeIsNotSupported)
-	_, err = bpf.CreateLogsProcessor(context.Background(), ProcessorCreateSettings{}, &defaultCfg, consumertest.NewNop())
-	assert.ErrorIs(t, err, componenterror.ErrDataTypeIsNotSupported)
 }

@@ -23,7 +23,7 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenterror"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/consumer/pdata"
@@ -33,17 +33,20 @@ import (
 
 // ScraperControllerSettings defines common settings for a scraper controller
 // configuration. Scraper controller receivers can embed this struct, instead
-// of config.ReceiverSettings, and extend it with more fields if needed.
+// of configmodels.ReceiverSettings, and extend it with more fields if needed.
 type ScraperControllerSettings struct {
-	config.ReceiverSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
-	CollectionInterval      time.Duration            `mapstructure:"collection_interval"`
+	configmodels.ReceiverSettings `mapstructure:"squash"`
+	CollectionInterval            time.Duration `mapstructure:"collection_interval"`
 }
 
 // DefaultScraperControllerSettings returns default scraper controller
 // settings with a collection interval of one minute.
-func DefaultScraperControllerSettings(cfgType config.Type) ScraperControllerSettings {
+func DefaultScraperControllerSettings(cfgType configmodels.Type) ScraperControllerSettings {
 	return ScraperControllerSettings{
-		ReceiverSettings:   config.NewReceiverSettings(config.NewID(cfgType)),
+		ReceiverSettings: configmodels.ReceiverSettings{
+			NameVal: string(cfgType),
+			TypeVal: cfgType,
+		},
 		CollectionInterval: time.Minute,
 	}
 }
@@ -84,7 +87,7 @@ func WithTickerChannel(tickerCh <-chan time.Time) ScraperControllerOption {
 }
 
 type controller struct {
-	id                 config.ComponentID
+	name               string
 	logger             *zap.Logger
 	collectionInterval time.Duration
 	nextConsumer       consumer.Metrics
@@ -97,8 +100,6 @@ type controller struct {
 	initialized bool
 	done        chan struct{}
 	terminated  chan struct{}
-
-	obsrecv *obsreport.Receiver
 }
 
 // NewScraperControllerReceiver creates a Receiver with the configured options, that can control multiple scrapers.
@@ -117,14 +118,13 @@ func NewScraperControllerReceiver(
 	}
 
 	sc := &controller{
-		id:                 cfg.ID(),
+		name:               cfg.Name(),
 		logger:             logger,
 		collectionInterval: cfg.CollectionInterval,
 		nextConsumer:       nextConsumer,
 		metricsScrapers:    &multiMetricScraper{},
 		done:               make(chan struct{}),
 		terminated:         make(chan struct{}),
-		obsrecv:            obsreport.NewReceiver(obsreport.ReceiverSettings{ReceiverID: cfg.ID(), Transport: ""}),
 	}
 
 	for _, op := range options {
@@ -166,7 +166,7 @@ func (sc *controller) Shutdown(ctx context.Context) error {
 			errs = append(errs, err)
 		}
 	}
-	return consumererror.Combine(errs)
+	return consumererror.CombineErrors(errs)
 }
 
 // startScraping initiates a ticker that calls Scrape based on the configured
@@ -196,11 +196,12 @@ func (sc *controller) startScraping() {
 // Scrapers, records observability information, and passes the scraped metrics
 // to the next component.
 func (sc *controller) scrapeMetricsAndReport(ctx context.Context) {
-	ctx = obsreport.ReceiverContext(ctx, sc.id, "")
+	ctx = obsreport.ReceiverContext(ctx, sc.name, "")
+
 	metrics := pdata.NewMetrics()
 
 	for _, rms := range sc.resourceMetricScrapers {
-		resourceMetrics, err := rms.Scrape(ctx, sc.id)
+		resourceMetrics, err := rms.Scrape(ctx, sc.name)
 		if err != nil {
 			sc.logger.Error("Error scraping metrics", zap.Error(err))
 
@@ -213,9 +214,9 @@ func (sc *controller) scrapeMetricsAndReport(ctx context.Context) {
 
 	_, dataPointCount := metrics.MetricAndDataPointCount()
 
-	ctx = sc.obsrecv.StartMetricsOp(ctx)
+	ctx = obsreport.StartMetricsReceiveOp(ctx, sc.name, "")
 	err := sc.nextConsumer.ConsumeMetrics(ctx, metrics)
-	sc.obsrecv.EndMetricsOp(ctx, "", dataPointCount, err)
+	obsreport.EndMetricsReceiveOp(ctx, "", dataPointCount, err)
 }
 
 // stopScraping stops the ticker
@@ -229,8 +230,8 @@ type multiMetricScraper struct {
 	scrapers []MetricsScraper
 }
 
-func (mms *multiMetricScraper) ID() config.ComponentID {
-	return config.NewID("")
+func (mms *multiMetricScraper) Name() string {
+	return ""
 }
 
 func (mms *multiMetricScraper) Start(ctx context.Context, host component.Host) error {
@@ -249,16 +250,20 @@ func (mms *multiMetricScraper) Shutdown(ctx context.Context) error {
 			errs = append(errs, err)
 		}
 	}
-	return consumererror.Combine(errs)
+	return consumererror.CombineErrors(errs)
 }
 
-func (mms *multiMetricScraper) Scrape(ctx context.Context, receiverID config.ComponentID) (pdata.ResourceMetricsSlice, error) {
+func (mms *multiMetricScraper) Scrape(ctx context.Context, receiverName string) (pdata.ResourceMetricsSlice, error) {
 	rms := pdata.NewResourceMetricsSlice()
-	ilm := rms.AppendEmpty().InstrumentationLibraryMetrics().AppendEmpty()
+	rms.Resize(1)
+	rm := rms.At(0)
+	ilms := rm.InstrumentationLibraryMetrics()
+	ilms.Resize(1)
+	ilm := ilms.At(0)
 
 	var errs scrapererror.ScrapeErrors
 	for _, scraper := range mms.scrapers {
-		metrics, err := scraper.Scrape(ctx, receiverID)
+		metrics, err := scraper.Scrape(ctx, receiverName)
 		if err != nil {
 			partialErr, isPartial := err.(scrapererror.PartialScrapeError)
 			if isPartial {

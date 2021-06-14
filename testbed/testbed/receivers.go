@@ -21,13 +21,13 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	promconfig "github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery"
+	"go.uber.org/zap"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configgrpc"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver/jaegerreceiver"
@@ -46,11 +46,11 @@ type DataReceiver interface {
 	Start(tc consumer.Traces, mc consumer.Metrics, lc consumer.Logs) error
 	Stop() error
 
-	// GenConfigYAMLStr generates a config string to place in exporter part of collector config
+	// Generate a config string to place in exporter part of collector config
 	// so that it can send data to this receiver.
 	GenConfigYAMLStr() string
 
-	// ProtocolName returns exporterType name to use in collector config pipeline.
+	// Return exporterType name to use in collector config pipeline.
 	ProtocolName() string
 }
 
@@ -66,15 +66,17 @@ func (mb *DataReceiverBase) ReportFatalError(err error) {
 	log.Printf("Fatal error reported: %v", err)
 }
 
-func (mb *DataReceiverBase) GetFactory(_ component.Kind, _ config.Type) component.Factory {
+// GetFactory of the specified kind. Returns the factory for a component type.
+func (mb *DataReceiverBase) GetFactory(_ component.Kind, _ configmodels.Type) component.Factory {
 	return nil
 }
 
-func (mb *DataReceiverBase) GetExtensions() map[config.ComponentID]component.Extension {
+// Return map of extensions. Only enabled and created extensions will be returned.
+func (mb *DataReceiverBase) GetExtensions() map[configmodels.NamedEntity]component.Extension {
 	return nil
 }
 
-func (mb *DataReceiverBase) GetExporters() map[config.DataType]map[config.ComponentID]component.Exporter {
+func (mb *DataReceiverBase) GetExporters() map[configmodels.DataType]map[configmodels.NamedEntity]component.Exporter {
 	return nil
 }
 
@@ -99,13 +101,14 @@ func NewOCDataReceiver(port int) *OCDataReceiver {
 func (or *OCDataReceiver) Start(tc consumer.Traces, mc consumer.Metrics, _ consumer.Logs) error {
 	factory := opencensusreceiver.NewFactory()
 	cfg := factory.CreateDefaultConfig().(*opencensusreceiver.Config)
+	cfg.SetName(or.ProtocolName())
 	cfg.NetAddr = confignet.NetAddr{Endpoint: fmt.Sprintf("localhost:%d", or.Port), Transport: "tcp"}
 	var err error
-	set := componenttest.NewNopReceiverCreateSettings()
-	if or.traceReceiver, err = factory.CreateTracesReceiver(context.Background(), set, cfg, tc); err != nil {
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	if or.traceReceiver, err = factory.CreateTracesReceiver(context.Background(), params, cfg, tc); err != nil {
 		return err
 	}
-	if or.metricsReceiver, err = factory.CreateMetricsReceiver(context.Background(), set, cfg, mc); err != nil {
+	if or.metricsReceiver, err = factory.CreateMetricsReceiver(context.Background(), params, cfg, mc); err != nil {
 		return err
 	}
 	if err = or.traceReceiver.Start(context.Background(), or); err != nil {
@@ -118,7 +121,10 @@ func (or *OCDataReceiver) Stop() error {
 	if err := or.traceReceiver.Shutdown(context.Background()); err != nil {
 		return err
 	}
-	return or.metricsReceiver.Shutdown(context.Background())
+	if err := or.metricsReceiver.Shutdown(context.Background()); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (or *OCDataReceiver) GenConfigYAMLStr() string {
@@ -150,12 +156,13 @@ func NewJaegerDataReceiver(port int) *JaegerDataReceiver {
 func (jr *JaegerDataReceiver) Start(tc consumer.Traces, _ consumer.Metrics, _ consumer.Logs) error {
 	factory := jaegerreceiver.NewFactory()
 	cfg := factory.CreateDefaultConfig().(*jaegerreceiver.Config)
+	cfg.SetName(jr.ProtocolName())
 	cfg.Protocols.GRPC = &configgrpc.GRPCServerSettings{
 		NetAddr: confignet.NetAddr{Endpoint: fmt.Sprintf("localhost:%d", jr.Port), Transport: "tcp"},
 	}
 	var err error
-	set := componenttest.NewNopReceiverCreateSettings()
-	jr.receiver, err = factory.CreateTracesReceiver(context.Background(), set, cfg, tc)
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	jr.receiver, err = factory.CreateTracesReceiver(context.Background(), params, cfg, tc)
 	if err != nil {
 		return err
 	}
@@ -193,6 +200,7 @@ type BaseOTLPDataReceiver struct {
 func (bor *BaseOTLPDataReceiver) Start(tc consumer.Traces, mc consumer.Metrics, lc consumer.Logs) error {
 	factory := otlpreceiver.NewFactory()
 	cfg := factory.CreateDefaultConfig().(*otlpreceiver.Config)
+	cfg.SetName(bor.exporterType)
 	if bor.exporterType == "otlp" {
 		cfg.GRPC.NetAddr = confignet.NetAddr{Endpoint: fmt.Sprintf("localhost:%d", bor.Port), Transport: "tcp"}
 		cfg.HTTP = nil
@@ -201,14 +209,14 @@ func (bor *BaseOTLPDataReceiver) Start(tc consumer.Traces, mc consumer.Metrics, 
 		cfg.GRPC = nil
 	}
 	var err error
-	set := componenttest.NewNopReceiverCreateSettings()
-	if bor.traceReceiver, err = factory.CreateTracesReceiver(context.Background(), set, cfg, tc); err != nil {
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	if bor.traceReceiver, err = factory.CreateTracesReceiver(context.Background(), params, cfg, tc); err != nil {
 		return err
 	}
-	if bor.metricsReceiver, err = factory.CreateMetricsReceiver(context.Background(), set, cfg, mc); err != nil {
+	if bor.metricsReceiver, err = factory.CreateMetricsReceiver(context.Background(), params, cfg, mc); err != nil {
 		return err
 	}
-	if bor.logReceiver, err = factory.CreateLogsReceiver(context.Background(), set, cfg, lc); err != nil {
+	if bor.logReceiver, err = factory.CreateLogsReceiver(context.Background(), params, cfg, lc); err != nil {
 		return err
 	}
 
@@ -259,7 +267,7 @@ func (bor *BaseOTLPDataReceiver) GenConfigYAMLStr() string {
 	return str
 }
 
-const DefaultOTLPPort = 4317
+const DefaultOTLPPort = 55680
 
 // NewOTLPDataReceiver creates a new OTLP DataReceiver that will listen on the specified port after Start
 // is called.
@@ -270,7 +278,7 @@ func NewOTLPDataReceiver(port int) *BaseOTLPDataReceiver {
 	}
 }
 
-// NewOTLPHTTPDataReceiver creates a new OTLP/HTTP DataReceiver that will listen on the specified port after Start
+// NewOTLPDataReceiver creates a new OTLP/HTTP DataReceiver that will listen on the specified port after Start
 // is called.
 func NewOTLPHTTPDataReceiver(port int) *BaseOTLPDataReceiver {
 	return &BaseOTLPDataReceiver{
@@ -294,11 +302,12 @@ func NewZipkinDataReceiver(port int) *ZipkinDataReceiver {
 func (zr *ZipkinDataReceiver) Start(tc consumer.Traces, _ consumer.Metrics, _ consumer.Logs) error {
 	factory := zipkinreceiver.NewFactory()
 	cfg := factory.CreateDefaultConfig().(*zipkinreceiver.Config)
+	cfg.SetName(zr.ProtocolName())
 	cfg.Endpoint = fmt.Sprintf("localhost:%d", zr.Port)
 
-	set := componenttest.NewNopReceiverCreateSettings()
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
 	var err error
-	zr.receiver, err = factory.CreateTracesReceiver(context.Background(), set, cfg, tc)
+	zr.receiver, err = factory.CreateTracesReceiver(context.Background(), params, cfg, tc)
 
 	if err != nil {
 		return err
@@ -340,8 +349,8 @@ func (dr *PrometheusDataReceiver) Start(_ consumer.Traces, mc consumer.Metrics, 
 	factory := prometheusreceiver.NewFactory()
 	cfg := factory.CreateDefaultConfig().(*prometheusreceiver.Config)
 	addr := fmt.Sprintf("0.0.0.0:%d", dr.Port)
-	cfg.PrometheusConfig = &promconfig.Config{
-		ScrapeConfigs: []*promconfig.ScrapeConfig{{
+	cfg.PrometheusConfig = &config.Config{
+		ScrapeConfigs: []*config.ScrapeConfig{{
 			JobName:        "testbed-job",
 			ScrapeInterval: model.Duration(100 * time.Millisecond),
 			ScrapeTimeout:  model.Duration(time.Second),
@@ -359,8 +368,8 @@ func (dr *PrometheusDataReceiver) Start(_ consumer.Traces, mc consumer.Metrics, 
 		}},
 	}
 	var err error
-	set := componenttest.NewNopReceiverCreateSettings()
-	dr.receiver, err = factory.CreateMetricsReceiver(context.Background(), set, cfg, mc)
+	params := component.ReceiverCreateParams{Logger: zap.NewNop()}
+	dr.receiver, err = factory.CreateMetricsReceiver(context.Background(), params, cfg, mc)
 	if err != nil {
 		return err
 	}
@@ -371,6 +380,7 @@ func (dr *PrometheusDataReceiver) Stop() error {
 	return dr.receiver.Shutdown(context.Background())
 }
 
+// Generate exporter yaml
 func (dr *PrometheusDataReceiver) GenConfigYAMLStr() string {
 	format := `
   prometheus:

@@ -18,17 +18,16 @@ import (
 	"context"
 	"errors"
 	"io/ioutil"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenterror"
-	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configerror"
 	"go.opentelemetry.io/collector/config/configgrpc"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/exporter/fileexporter"
 	"go.opentelemetry.io/collector/exporter/jaegerexporter"
 	"go.opentelemetry.io/collector/exporter/kafkaexporter"
@@ -48,13 +47,12 @@ func TestDefaultExporters(t *testing.T) {
 	endpoint := testutil.GetAvailableLocalAddress(t)
 
 	tests := []struct {
-		exporter      config.Type
-		getConfigFn   getExporterConfigFn
-		skipLifecycle bool
+		exporter    configmodels.Type
+		getConfigFn getExporterConfigFn
 	}{
 		{
 			exporter: "file",
-			getConfigFn: func() config.Exporter {
+			getConfigFn: func() configmodels.Exporter {
 				cfg := expFactories["file"].CreateDefaultConfig().(*fileexporter.Config)
 				f, err := ioutil.TempFile("", "otelcol_defaults_file_exporter_test*.tmp")
 				require.NoError(t, err)
@@ -65,7 +63,7 @@ func TestDefaultExporters(t *testing.T) {
 		},
 		{
 			exporter: "jaeger",
-			getConfigFn: func() config.Exporter {
+			getConfigFn: func() configmodels.Exporter {
 				cfg := expFactories["jaeger"].CreateDefaultConfig().(*jaegerexporter.Config)
 				cfg.Endpoint = endpoint
 				return cfg
@@ -73,7 +71,7 @@ func TestDefaultExporters(t *testing.T) {
 		},
 		{
 			exporter: "kafka",
-			getConfigFn: func() config.Exporter {
+			getConfigFn: func() configmodels.Exporter {
 				cfg := expFactories["kafka"].CreateDefaultConfig().(*kafkaexporter.Config)
 				cfg.Brokers = []string{"invalid:9092"}
 				// this disables contacting the broker so we can successfully create the exporter
@@ -82,12 +80,11 @@ func TestDefaultExporters(t *testing.T) {
 			},
 		},
 		{
-			exporter:      "logging",
-			skipLifecycle: runtime.GOOS == "darwin", // TODO: investigate why this fails on darwin.
+			exporter: "logging",
 		},
 		{
 			exporter: "opencensus",
-			getConfigFn: func() config.Exporter {
+			getConfigFn: func() configmodels.Exporter {
 				cfg := expFactories["opencensus"].CreateDefaultConfig().(*opencensusexporter.Config)
 				cfg.GRPCClientSettings = configgrpc.GRPCClientSettings{
 					Endpoint: endpoint,
@@ -97,7 +94,7 @@ func TestDefaultExporters(t *testing.T) {
 		},
 		{
 			exporter: "otlp",
-			getConfigFn: func() config.Exporter {
+			getConfigFn: func() configmodels.Exporter {
 				cfg := expFactories["otlp"].CreateDefaultConfig().(*otlpexporter.Config)
 				cfg.GRPCClientSettings = configgrpc.GRPCClientSettings{
 					Endpoint: endpoint,
@@ -107,7 +104,7 @@ func TestDefaultExporters(t *testing.T) {
 		},
 		{
 			exporter: "otlphttp",
-			getConfigFn: func() config.Exporter {
+			getConfigFn: func() configmodels.Exporter {
 				cfg := expFactories["otlphttp"].CreateDefaultConfig().(*otlphttpexporter.Config)
 				cfg.Endpoint = "http://" + endpoint
 				return cfg
@@ -115,7 +112,7 @@ func TestDefaultExporters(t *testing.T) {
 		},
 		{
 			exporter: "prometheus",
-			getConfigFn: func() config.Exporter {
+			getConfigFn: func() configmodels.Exporter {
 				cfg := expFactories["prometheus"].CreateDefaultConfig().(*prometheusexporter.Config)
 				cfg.Endpoint = endpoint
 				return cfg
@@ -126,7 +123,7 @@ func TestDefaultExporters(t *testing.T) {
 		},
 		{
 			exporter: "zipkin",
-			getConfigFn: func() config.Exporter {
+			getConfigFn: func() configmodels.Exporter {
 				cfg := expFactories["zipkin"].CreateDefaultConfig().(*zipkinexporter.Config)
 				cfg.Endpoint = endpoint
 				return cfg
@@ -140,12 +137,7 @@ func TestDefaultExporters(t *testing.T) {
 			factory, ok := expFactories[tt.exporter]
 			require.True(t, ok)
 			assert.Equal(t, tt.exporter, factory.Type())
-			assert.Equal(t, config.NewID(tt.exporter), factory.CreateDefaultConfig().ID())
-
-			if tt.skipLifecycle {
-				t.Log("Skipping lifecycle test", tt.exporter)
-				return
-			}
+			assert.Equal(t, tt.exporter, factory.CreateDefaultConfig().Type())
 
 			verifyExporterLifecycle(t, factory, tt.getConfigFn)
 		})
@@ -155,7 +147,7 @@ func TestDefaultExporters(t *testing.T) {
 // GetExporterConfigFn is used customize the configuration passed to the verification.
 // This is used to change ports or provide values required but not provided by the
 // default configuration.
-type getExporterConfigFn func() config.Exporter
+type getExporterConfigFn func() configmodels.Exporter
 
 // verifyExporterLifecycle is used to test if an exporter type can handle the typical
 // lifecycle of a component. The getConfigFn parameter only need to be specified if
@@ -163,11 +155,13 @@ type getExporterConfigFn func() config.Exporter
 func verifyExporterLifecycle(t *testing.T, factory component.ExporterFactory, getConfigFn getExporterConfigFn) {
 	ctx := context.Background()
 	host := newAssertNoErrorHost(t)
-	expCreateSettings := componenttest.NewNopExporterCreateSettings()
+	expCreateParams := component.ExporterCreateParams{
+		Logger:               zap.NewNop(),
+		ApplicationStartInfo: component.DefaultApplicationStartInfo(),
+	}
 
-	cfg := factory.CreateDefaultConfig()
-	if getConfigFn != nil {
-		cfg = getConfigFn()
+	if getConfigFn == nil {
+		getConfigFn = factory.CreateDefaultConfig
 	}
 
 	createFns := []createExporterFn{
@@ -176,43 +170,42 @@ func verifyExporterLifecycle(t *testing.T, factory component.ExporterFactory, ge
 		wrapCreateMetricsExp(factory),
 	}
 
-	for i := 0; i < 2; i++ {
-		var exps []component.Exporter
-		for _, createFn := range createFns {
-			exp, err := createFn(ctx, expCreateSettings, cfg)
-			if errors.Is(err, componenterror.ErrDataTypeIsNotSupported) {
-				continue
-			}
-			require.NoError(t, err)
-			require.NoError(t, exp.Start(ctx, host))
-			exps = append(exps, exp)
+	for _, createFn := range createFns {
+		firstExp, err := createFn(ctx, expCreateParams, getConfigFn())
+		if errors.Is(err, configerror.ErrDataTypeIsNotSupported) {
+			continue
 		}
-		for _, exp := range exps {
-			assert.NoError(t, exp.Shutdown(ctx))
-		}
+		require.NoError(t, err)
+		require.NoError(t, firstExp.Start(ctx, host))
+		require.NoError(t, firstExp.Shutdown(ctx))
+
+		secondExp, err := createFn(ctx, expCreateParams, getConfigFn())
+		require.NoError(t, err)
+		require.NoError(t, secondExp.Start(ctx, host))
+		require.NoError(t, secondExp.Shutdown(ctx))
 	}
 }
 
 type createExporterFn func(
 	ctx context.Context,
-	set component.ExporterCreateSettings,
-	cfg config.Exporter,
+	params component.ExporterCreateParams,
+	cfg configmodels.Exporter,
 ) (component.Exporter, error)
 
 func wrapCreateLogsExp(factory component.ExporterFactory) createExporterFn {
-	return func(ctx context.Context, set component.ExporterCreateSettings, cfg config.Exporter) (component.Exporter, error) {
-		return factory.CreateLogsExporter(ctx, set, cfg)
+	return func(ctx context.Context, params component.ExporterCreateParams, cfg configmodels.Exporter) (component.Exporter, error) {
+		return factory.CreateLogsExporter(ctx, params, cfg)
 	}
 }
 
 func wrapCreateTracesExp(factory component.ExporterFactory) createExporterFn {
-	return func(ctx context.Context, set component.ExporterCreateSettings, cfg config.Exporter) (component.Exporter, error) {
-		return factory.CreateTracesExporter(ctx, set, cfg)
+	return func(ctx context.Context, params component.ExporterCreateParams, cfg configmodels.Exporter) (component.Exporter, error) {
+		return factory.CreateTracesExporter(ctx, params, cfg)
 	}
 }
 
 func wrapCreateMetricsExp(factory component.ExporterFactory) createExporterFn {
-	return func(ctx context.Context, set component.ExporterCreateSettings, cfg config.Exporter) (component.Exporter, error) {
-		return factory.CreateMetricsExporter(ctx, set, cfg)
+	return func(ctx context.Context, params component.ExporterCreateParams, cfg configmodels.Exporter) (component.Exporter, error) {
+		return factory.CreateMetricsExporter(ctx, params, cfg)
 	}
 }

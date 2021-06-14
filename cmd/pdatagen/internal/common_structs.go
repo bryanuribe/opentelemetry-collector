@@ -73,7 +73,7 @@ var instrumentationLibraryField = &messageValueField{
 }
 
 var startTimeField = &primitiveTypedField{
-	fieldName:       "StartTimestamp",
+	fieldName:       "StartTime",
 	originFieldName: "StartTimeUnixNano",
 	returnType:      "Timestamp",
 	rawType:         "uint64",
@@ -91,7 +91,7 @@ var timeField = &primitiveTypedField{
 }
 
 var endTimeField = &primitiveTypedField{
-	fieldName:       "EndTimestamp",
+	fieldName:       "EndTime",
 	originFieldName: "EndTimeUnixNano",
 	returnType:      "Timestamp",
 	rawType:         "uint64",

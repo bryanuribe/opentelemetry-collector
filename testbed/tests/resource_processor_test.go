@@ -289,12 +289,3 @@ func TestMetricResourceProcessor(t *testing.T) {
 		})
 	}
 }
-
-func attributesToMap(attributes pdata.AttributeMap) map[string]pdata.AttributeValue {
-	out := map[string]pdata.AttributeValue{}
-	attributes.Range(func(k string, v pdata.AttributeValue) bool {
-		out[k] = v
-		return true
-	})
-	return out
-}

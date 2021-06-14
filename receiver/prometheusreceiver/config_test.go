@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 )
 
@@ -36,17 +36,22 @@ func TestLoadConfig(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Receivers[typeStr] = factory
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
+	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
+
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
 	assert.Equal(t, len(cfg.Receivers), 2)
 
-	r0 := cfg.Receivers[config.NewID(typeStr)]
+	r0 := cfg.Receivers["prometheus"]
 	assert.Equal(t, r0, factory.CreateDefaultConfig())
 
-	r1 := cfg.Receivers[config.NewIDWithName(typeStr, "customname")].(*Config)
-	assert.Equal(t, r1.ReceiverSettings, config.NewReceiverSettings(config.NewIDWithName(typeStr, "customname")))
+	r1 := cfg.Receivers["prometheus/customname"].(*Config)
+	assert.Equal(t, r1.ReceiverSettings,
+		configmodels.ReceiverSettings{
+			TypeVal: typeStr,
+			NameVal: "prometheus/customname",
+		})
 	assert.Equal(t, r1.PrometheusConfig.ScrapeConfigs[0].JobName, "demo")
 	assert.Equal(t, time.Duration(r1.PrometheusConfig.ScrapeConfigs[0].ScrapeInterval), 5*time.Second)
 	assert.Equal(t, r1.UseStartTimeMetric, true)
@@ -63,12 +68,16 @@ func TestLoadConfigWithEnvVar(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Receivers[typeStr] = factory
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config_env.yaml"), factories)
+	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config_env.yaml"), factories)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
-	r := cfg.Receivers[config.NewID(typeStr)].(*Config)
-	assert.Equal(t, r.ReceiverSettings, config.NewReceiverSettings(config.NewID(typeStr)))
+	r := cfg.Receivers["prometheus"].(*Config)
+	assert.Equal(t, r.ReceiverSettings,
+		configmodels.ReceiverSettings{
+			TypeVal: typeStr,
+			NameVal: "prometheus",
+		})
 	assert.Equal(t, r.PrometheusConfig.ScrapeConfigs[0].JobName, jobname)
 	os.Unsetenv(jobnamevar)
 }
@@ -84,12 +93,16 @@ func TestLoadConfigK8s(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Receivers[typeStr] = factory
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config_k8s.yaml"), factories)
+	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config_k8s.yaml"), factories)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
-	r := cfg.Receivers[config.NewID(typeStr)].(*Config)
-	assert.Equal(t, r.ReceiverSettings, config.NewReceiverSettings(config.NewID(typeStr)))
+	r := cfg.Receivers["prometheus"].(*Config)
+	assert.Equal(t, r.ReceiverSettings,
+		configmodels.ReceiverSettings{
+			TypeVal: typeStr,
+			NameVal: "prometheus",
+		})
 
 	scrapeConfig := r.PrometheusConfig.ScrapeConfigs[0]
 	kubeSDConfig := scrapeConfig.ServiceDiscoveryConfigs[0].(*kubernetes.SDConfig)
@@ -107,9 +120,12 @@ func TestLoadConfigFailsOnUnknownSection(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Receivers[typeStr] = factory
-	cfg, err := configtest.LoadConfig(path.Join(".", "testdata", "invalid-config-section.yaml"), factories)
-	assert.Error(t, err)
-	assert.Nil(t, cfg)
+	cfg, err := configtest.LoadConfigFile(
+		t,
+		path.Join(".", "testdata", "invalid-config-section.yaml"), factories)
+
+	require.Error(t, err)
+	require.Nil(t, cfg)
 }
 
 // As one of the config parameters is consuming prometheus
@@ -121,7 +137,10 @@ func TestLoadConfigFailsOnUnknownPrometheusSection(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Receivers[typeStr] = factory
-	cfg, err := configtest.LoadConfig(path.Join(".", "testdata", "invalid-config-prometheus-section.yaml"), factories)
-	assert.Error(t, err)
-	assert.Nil(t, cfg)
+	cfg, err := configtest.LoadConfigFile(
+		t,
+		path.Join(".", "testdata", "invalid-config-prometheus-section.yaml"), factories)
+
+	require.Error(t, err)
+	require.Nil(t, cfg)
 }

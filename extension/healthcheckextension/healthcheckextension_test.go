@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,41 +28,38 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/testutil"
 )
 
 func TestHealthCheckExtensionUsage(t *testing.T) {
 	config := Config{
-		TCPAddr: confignet.TCPAddr{
-			Endpoint: testutil.GetAvailableLocalAddress(t),
-		},
+		Port: testutil.GetAvailablePort(t),
 	}
 
 	hcExt := newServer(config, zap.NewNop())
 	require.NotNil(t, hcExt)
 
 	require.NoError(t, hcExt.Start(context.Background(), componenttest.NewNopHost()))
-	t.Cleanup(func() { require.NoError(t, hcExt.Shutdown(context.Background())) })
+	defer hcExt.Shutdown(context.Background())
 
 	// Give a chance for the server goroutine to run.
 	runtime.Gosched()
 
 	client := &http.Client{}
-	url := "http://" + config.TCPAddr.Endpoint
+	url := "http://localhost:" + strconv.Itoa(int(config.Port))
 	resp0, err := client.Get(url)
 	require.NoError(t, err)
 	defer resp0.Body.Close()
 
 	require.Equal(t, http.StatusServiceUnavailable, resp0.StatusCode)
 
-	require.NoError(t, hcExt.Ready())
+	hcExt.Ready()
 	resp1, err := client.Get(url)
 	require.NoError(t, err)
 	defer resp1.Body.Close()
 	require.Equal(t, http.StatusOK, resp1.StatusCode)
 
-	require.NoError(t, hcExt.NotReady())
+	hcExt.NotReady()
 	resp2, err := client.Get(url)
 	require.NoError(t, err)
 	defer resp2.Body.Close()
@@ -70,18 +68,21 @@ func TestHealthCheckExtensionUsage(t *testing.T) {
 
 func TestHealthCheckExtensionPortAlreadyInUse(t *testing.T) {
 	endpoint := testutil.GetAvailableLocalAddress(t)
+	_, portStr, err := net.SplitHostPort(endpoint)
+	require.NoError(t, err)
 
 	// This needs to be ":port" because health checks also tries to connect to ":port".
 	// To avoid the pop-up "accept incoming network connections" health check should be changed
 	// to accept an address.
-	ln, err := net.Listen("tcp", endpoint)
+	ln, err := net.Listen("tcp", ":"+portStr)
 	require.NoError(t, err)
 	defer ln.Close()
 
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+
 	config := Config{
-		TCPAddr: confignet.TCPAddr{
-			Endpoint: endpoint,
-		},
+		Port: uint16(port),
 	}
 	hcExt := newServer(config, zap.NewNop())
 	require.NotNil(t, hcExt)
@@ -92,9 +93,7 @@ func TestHealthCheckExtensionPortAlreadyInUse(t *testing.T) {
 
 func TestHealthCheckMultipleStarts(t *testing.T) {
 	config := Config{
-		TCPAddr: confignet.TCPAddr{
-			Endpoint: testutil.GetAvailableLocalAddress(t),
-		},
+		Port: testutil.GetAvailablePort(t),
 	}
 
 	hcExt := newServer(config, zap.NewNop())
@@ -102,16 +101,14 @@ func TestHealthCheckMultipleStarts(t *testing.T) {
 
 	mh := newAssertNoErrorHost(t)
 	require.NoError(t, hcExt.Start(context.Background(), mh))
-	t.Cleanup(func() { require.NoError(t, hcExt.Shutdown(context.Background())) })
+	defer hcExt.Shutdown(context.Background())
 
 	require.Error(t, hcExt.Start(context.Background(), mh))
 }
 
 func TestHealthCheckMultipleShutdowns(t *testing.T) {
 	config := Config{
-		TCPAddr: confignet.TCPAddr{
-			Endpoint: testutil.GetAvailableLocalAddress(t),
-		},
+		Port: testutil.GetAvailablePort(t),
 	}
 
 	hcExt := newServer(config, zap.NewNop())
@@ -124,9 +121,7 @@ func TestHealthCheckMultipleShutdowns(t *testing.T) {
 
 func TestHealthCheckShutdownWithoutStart(t *testing.T) {
 	config := Config{
-		TCPAddr: confignet.TCPAddr{
-			Endpoint: testutil.GetAvailableLocalAddress(t),
-		},
+		Port: testutil.GetAvailablePort(t),
 	}
 
 	hcExt := newServer(config, zap.NewNop())
@@ -141,11 +136,13 @@ type assertNoErrorHost struct {
 	*testing.T
 }
 
+var _ component.Host = (*assertNoErrorHost)(nil)
+
 // newAssertNoErrorHost returns a new instance of assertNoErrorHost.
 func newAssertNoErrorHost(t *testing.T) component.Host {
 	return &assertNoErrorHost{
-		Host: componenttest.NewNopHost(),
-		T:    t,
+		componenttest.NewNopHost(),
+		t,
 	}
 }
 

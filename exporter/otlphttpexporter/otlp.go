@@ -31,16 +31,15 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
-	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configgrpc"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.opentelemetry.io/collector/internal/middleware"
 )
 
-type exporter struct {
+type exporterImp struct {
 	// Input configuration.
 	config     *Config
 	client     *http.Client
@@ -56,7 +55,7 @@ const (
 )
 
 // Crete new exporter.
-func newExporter(cfg config.Exporter, logger *zap.Logger) (*exporter, error) {
+func newExporter(cfg configmodels.Exporter, logger *zap.Logger) (*exporterImp, error) {
 	oCfg := cfg.(*Config)
 
 	if oCfg.Endpoint != "" {
@@ -66,59 +65,69 @@ func newExporter(cfg config.Exporter, logger *zap.Logger) (*exporter, error) {
 		}
 	}
 
-	// client construction is deferred to start
-	return &exporter{
+	client, err := oCfg.HTTPClientSettings.ToClient()
+	if err != nil {
+		return nil, err
+	}
+
+	if oCfg.Compression != "" {
+		if strings.ToLower(oCfg.Compression) == configgrpc.CompressionGzip {
+			client.Transport = middleware.NewCompressRoundTripper(client.Transport)
+		} else {
+			return nil, fmt.Errorf("unsupported compression type %q", oCfg.Compression)
+		}
+	}
+
+	return &exporterImp{
 		config: oCfg,
+		client: client,
 		logger: logger,
 	}, nil
 }
 
-// start actually creates the HTTP client. The client construction is deferred till this point as this
-// is the only place we get hold of Extensions which are required to construct auth round tripper.
-func (e *exporter) start(_ context.Context, host component.Host) error {
-	client, err := e.config.HTTPClientSettings.ToClient(host.GetExtensions())
-	if err != nil {
-		return err
-	}
-
-	if e.config.Compression != "" {
-		if strings.ToLower(e.config.Compression) == configgrpc.CompressionGzip {
-			client.Transport = middleware.NewCompressRoundTripper(client.Transport)
-		} else {
-			return fmt.Errorf("unsupported compression type %q", e.config.Compression)
-		}
-	}
-	e.client = client
-	return nil
-}
-
-func (e *exporter) pushTraces(ctx context.Context, traces pdata.Traces) error {
+func (e *exporterImp) pushTraceData(ctx context.Context, traces pdata.Traces) error {
 	request, err := traces.ToOtlpProtoBytes()
 	if err != nil {
 		return consumererror.Permanent(err)
 	}
 
-	return e.export(ctx, e.tracesURL, request)
+	err = e.export(ctx, e.tracesURL, request)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (e *exporter) pushMetrics(ctx context.Context, metrics pdata.Metrics) error {
+func (e *exporterImp) pushMetricsData(ctx context.Context, metrics pdata.Metrics) error {
 	request, err := metrics.ToOtlpProtoBytes()
 	if err != nil {
 		return consumererror.Permanent(err)
 	}
-	return e.export(ctx, e.metricsURL, request)
+
+	err = e.export(ctx, e.metricsURL, request)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (e *exporter) pushLogs(ctx context.Context, logs pdata.Logs) error {
+func (e *exporterImp) pushLogData(ctx context.Context, logs pdata.Logs) error {
 	request, err := logs.ToOtlpProtoBytes()
 	if err != nil {
 		return consumererror.Permanent(err)
 	}
 
-	return e.export(ctx, e.logsURL, request)
+	err = e.export(ctx, e.logsURL, request)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (e *exporter) export(ctx context.Context, url string, request []byte) error {
+func (e *exporterImp) export(ctx context.Context, url string, request []byte) error {
 	e.logger.Debug("Preparing to make HTTP request", zap.String("url", url))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(request))
 	if err != nil {
@@ -133,7 +142,7 @@ func (e *exporter) export(ctx context.Context, url string, request []byte) error
 
 	defer func() {
 		// Discard any remaining response body when we are done reading.
-		io.CopyN(ioutil.Discard, resp.Body, maxHTTPResponseReadBytes) // nolint:errcheck
+		io.CopyN(ioutil.Discard, resp.Body, maxHTTPResponseReadBytes)
 		resp.Body.Close()
 	}()
 

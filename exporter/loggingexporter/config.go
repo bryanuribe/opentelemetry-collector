@@ -15,12 +15,12 @@
 package loggingexporter
 
 import (
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 )
 
 // Config defines configuration for logging exporter.
 type Config struct {
-	config.ExporterSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+	configmodels.ExporterSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct.
 
 	// LogLevel defines log level of the logging exporter; options are debug, info, warn, error.
 	LogLevel string `mapstructure:"loglevel"`
@@ -30,11 +30,4 @@ type Config struct {
 
 	// SamplingThereafter defines the sampling rate after the initial samples are logged.
 	SamplingThereafter int `mapstructure:"sampling_thereafter"`
-}
-
-var _ config.Exporter = (*Config)(nil)
-
-// Validate checks if the exporter configuration is valid
-func (cfg *Config) Validate() error {
-	return nil
 }

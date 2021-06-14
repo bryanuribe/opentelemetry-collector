@@ -28,7 +28,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.opentelemetry.io/collector/consumer/pdata"
-	idutils "go.opentelemetry.io/collector/internal/idutils"
 	tracetranslator "go.opentelemetry.io/collector/translator/trace"
 )
 
@@ -254,14 +253,14 @@ func parseAnnotationValue(value string, parseStringTags bool) *tracepb.Attribute
 	pbAttrib := &tracepb.AttributeValue{}
 
 	if parseStringTags {
-		switch determineValueType(value) {
-		case pdata.AttributeValueTypeInt:
+		switch tracetranslator.DetermineValueType(value, false) {
+		case pdata.AttributeValueINT:
 			iValue, _ := strconv.ParseInt(value, 10, 64)
 			pbAttrib.Value = &tracepb.AttributeValue_IntValue{IntValue: iValue}
-		case pdata.AttributeValueTypeDouble:
+		case pdata.AttributeValueDOUBLE:
 			fValue, _ := strconv.ParseFloat(value, 64)
 			pbAttrib.Value = &tracepb.AttributeValue_DoubleValue{DoubleValue: fValue}
-		case pdata.AttributeValueTypeBool:
+		case pdata.AttributeValueBOOL:
 			bValue, _ := strconv.ParseBool(value)
 			pbAttrib.Value = &tracepb.AttributeValue_BoolValue{BoolValue: bValue}
 		default:
@@ -415,7 +414,7 @@ func hexTraceIDToOCTraceID(hex string) ([]byte, error) {
 		return nil, errHexTraceIDZero
 	}
 
-	tidBytes := idutils.UInt64ToTraceID(high, low).Bytes()
+	tidBytes := tracetranslator.UInt64ToTraceID(high, low).Bytes()
 	return tidBytes[:], nil
 }
 
@@ -434,7 +433,7 @@ func hexIDToOCID(hex string) ([]byte, error) {
 		return nil, errHexIDZero
 	}
 
-	idBytes := idutils.UInt64ToSpanID(idValue).Bytes()
+	idBytes := tracetranslator.UInt64ToSpanID(idValue).Bytes()
 	return idBytes[:], nil
 }
 
@@ -509,7 +508,7 @@ func setTimestampsIfUnset(span *tracepb.Span) {
 		if span.Attributes.AttributeMap == nil {
 			span.Attributes.AttributeMap = make(map[string]*tracepb.AttributeValue, 1)
 		}
-		span.Attributes.AttributeMap[startTimeAbsent] = &tracepb.AttributeValue{
+		span.Attributes.AttributeMap[StartTimeAbsent] = &tracepb.AttributeValue{
 			Value: &tracepb.AttributeValue_BoolValue{
 				BoolValue: true,
 			}}

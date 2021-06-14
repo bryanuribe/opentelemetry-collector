@@ -15,12 +15,15 @@
 package prometheusremotewriteexporter
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 
 	"go.opentelemetry.io/collector/consumer/pdata"
+	common "go.opentelemetry.io/collector/internal/data/protogen/common/v1"
+	otlp "go.opentelemetry.io/collector/internal/data/protogen/metrics/v1"
 )
 
 // Test_validateMetrics checks validateMetrics return true if a type and temporality combination is valid, false
@@ -30,7 +33,7 @@ func Test_validateMetrics(t *testing.T) {
 	// define a single test
 	type combTest struct {
 		name   string
-		metric pdata.Metric
+		metric *otlp.Metric
 		want   bool
 	}
 
@@ -47,8 +50,11 @@ func Test_validateMetrics(t *testing.T) {
 		})
 	}
 
+	// append nil case
+	tests = append(tests, combTest{"invalid_nil", nil, false})
+
 	for k, invalidMetric := range invalidMetrics {
-		name := "invalid_" + k
+		name := "valid_" + k
 
 		tests = append(tests, combTest{
 			name,
@@ -72,7 +78,7 @@ func Test_validateMetrics(t *testing.T) {
 // case.
 func Test_addSample(t *testing.T) {
 	type testCase struct {
-		metric pdata.Metric
+		metric *otlp.Metric
 		sample prompb.Sample
 		labels []prompb.Label
 	}
@@ -115,9 +121,9 @@ func Test_addSample(t *testing.T) {
 			twoPointsDifferentTs,
 		},
 	}
-	t.Run("empty_case", func(t *testing.T) {
+	t.Run("nil_case", func(t *testing.T) {
 		tsMap := map[string]*prompb.TimeSeries{}
-		addSample(tsMap, nil, nil, pdata.NewMetric())
+		addSample(tsMap, nil, nil, nil)
 		assert.Exactly(t, tsMap, map[string]*prompb.TimeSeries{})
 	})
 	// run tests
@@ -136,33 +142,33 @@ func Test_timeSeriesSignature(t *testing.T) {
 	tests := []struct {
 		name   string
 		lbs    []prompb.Label
-		metric pdata.Metric
+		metric *otlp.Metric
 		want   string
 	}{
 		{
 			"int64_signature",
 			promLbs1,
 			validMetrics1[validIntGauge],
-			validMetrics1[validIntGauge].DataType().String() + lb1Sig,
+			strconv.Itoa(int(pdata.MetricDataTypeIntGauge)) + lb1Sig,
 		},
 		{
 			"histogram_signature",
 			promLbs2,
 			validMetrics1[validIntHistogram],
-			validMetrics1[validIntHistogram].DataType().String() + lb2Sig,
+			strconv.Itoa(int(pdata.MetricDataTypeIntHistogram)) + lb2Sig,
 		},
 		{
 			"unordered_signature",
 			getPromLabels(label22, value22, label21, value21),
 			validMetrics1[validIntHistogram],
-			validMetrics1[validIntHistogram].DataType().String() + lb2Sig,
+			strconv.Itoa(int(pdata.MetricDataTypeIntHistogram)) + lb2Sig,
 		},
 		// descriptor type cannot be nil, as checked by validateMetrics
 		{
 			"nil_case",
 			nil,
 			validMetrics1[validIntHistogram],
-			validMetrics1[validIntHistogram].DataType().String(),
+			strconv.Itoa(int(pdata.MetricDataTypeIntHistogram)),
 		},
 	}
 
@@ -179,31 +185,20 @@ func Test_timeSeriesSignature(t *testing.T) {
 func Test_createLabelSet(t *testing.T) {
 	tests := []struct {
 		name           string
-		resource       pdata.Resource
-		orig           pdata.StringMap
+		orig           []common.StringKeyValue
 		externalLabels map[string]string
 		extras         []string
 		want           []prompb.Label
 	}{
 		{
 			"labels_clean",
-			getResource(),
 			lbs1,
 			map[string]string{},
 			[]string{label31, value31, label32, value32},
 			getPromLabels(label11, value11, label12, value12, label31, value31, label32, value32),
 		},
 		{
-			"labels_with_resource",
-			getResource("job", "prometheus", "instance", "127.0.0.1:8080"),
-			lbs1,
-			map[string]string{},
-			[]string{label31, value31, label32, value32},
-			getPromLabels(label11, value11, label12, value12, label31, value31, label32, value32, "job", "prometheus", "instance", "127.0.0.1:8080"),
-		},
-		{
 			"labels_duplicate_in_extras",
-			getResource(),
 			lbs1,
 			map[string]string{},
 			[]string{label11, value31},
@@ -211,7 +206,6 @@ func Test_createLabelSet(t *testing.T) {
 		},
 		{
 			"labels_dirty",
-			getResource(),
 			lbs1Dirty,
 			map[string]string{},
 			[]string{label31 + dirty1, value31, label32, value32},
@@ -219,15 +213,13 @@ func Test_createLabelSet(t *testing.T) {
 		},
 		{
 			"no_original_case",
-			getResource(),
-			pdata.NewStringMap(),
+			nil,
 			nil,
 			[]string{label31, value31, label32, value32},
 			getPromLabels(label31, value31, label32, value32),
 		},
 		{
 			"empty_extra_case",
-			getResource(),
 			lbs1,
 			map[string]string{},
 			[]string{"", ""},
@@ -235,7 +227,6 @@ func Test_createLabelSet(t *testing.T) {
 		},
 		{
 			"single_left_over_case",
-			getResource(),
 			lbs1,
 			map[string]string{},
 			[]string{label31, value31, label32},
@@ -243,7 +234,6 @@ func Test_createLabelSet(t *testing.T) {
 		},
 		{
 			"valid_external_labels",
-			getResource(),
 			lbs1,
 			exlbs1,
 			[]string{label31, value31, label32, value32},
@@ -251,7 +241,6 @@ func Test_createLabelSet(t *testing.T) {
 		},
 		{
 			"overwritten_external_labels",
-			getResource(),
 			lbs1,
 			exlbs2,
 			[]string{label31, value31, label32, value32},
@@ -261,7 +250,7 @@ func Test_createLabelSet(t *testing.T) {
 	// run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.ElementsMatch(t, tt.want, createLabelSet(tt.resource, tt.orig, tt.externalLabels, tt.extras...))
+			assert.ElementsMatch(t, tt.want, createLabelSet(tt.orig, tt.externalLabels, tt.extras...))
 		})
 	}
 }
@@ -272,15 +261,15 @@ func Test_createLabelSet(t *testing.T) {
 func Test_getPromMetricName(t *testing.T) {
 	tests := []struct {
 		name   string
-		metric pdata.Metric
+		metric *otlp.Metric
 		ns     string
 		want   string
 	}{
 		{
-			"empty_case",
-			invalidMetrics[empty],
+			"nil_case",
+			nil,
 			ns1,
-			"test_ns_",
+			"",
 		},
 		{
 			"normal_case",
@@ -295,12 +284,16 @@ func Test_getPromMetricName(t *testing.T) {
 			validDoubleGauge,
 		},
 		{
-			// Ensure removed functionality stays removed.
-			// See https://github.com/open-telemetry/opentelemetry-collector/pull/2993 for context
-			"no_counter_suffix",
+			"total_suffix",
 			validMetrics1[validIntSum],
 			ns1,
-			"test_ns_" + validIntSum,
+			"test_ns_" + validIntSum + counterSuffix,
+		},
+		{
+			"already_has_total_suffix",
+			validMetrics1[suffixedCounter],
+			ns1,
+			"test_ns_" + suffixedCounter,
 		},
 		{
 			"dirty_string",
@@ -372,118 +365,5 @@ func Test_batchTimeSeries(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tt.numExpectedRequests, len(requests))
 		})
-	}
-}
-
-// Ensure that before a prompb.WriteRequest is created, that the points per TimeSeries
-// are sorted by Timestamp value, to prevent Prometheus from barfing when it gets poorly
-// sorted values. See issues:
-// * https://github.com/open-telemetry/wg-prometheus/issues/10
-// * https://github.com/open-telemetry/opentelemetry-collector/issues/2315
-func TestEnsureTimeseriesPointsAreSortedByTimestamp(t *testing.T) {
-	outOfOrder := []prompb.TimeSeries{
-		{
-			Samples: []prompb.Sample{
-				{
-					Value:     10.11,
-					Timestamp: 1000,
-				},
-				{
-					Value:     7.81,
-					Timestamp: 2,
-				},
-				{
-					Value:     987.81,
-					Timestamp: 1,
-				},
-				{
-					Value:     18.22,
-					Timestamp: 999,
-				},
-			},
-		},
-		{
-			Samples: []prompb.Sample{
-				{
-					Value:     99.91,
-					Timestamp: 5,
-				},
-				{
-					Value:     4.33,
-					Timestamp: 3,
-				},
-				{
-					Value:     47.81,
-					Timestamp: 4,
-				},
-				{
-					Value:     18.22,
-					Timestamp: 8,
-				},
-			},
-		},
-	}
-	got := convertTimeseriesToRequest(outOfOrder)
-
-	// We must ensure that the resulting Timeseries' sample points are sorted by Timestamp.
-	want := &prompb.WriteRequest{
-		Timeseries: []prompb.TimeSeries{
-			{
-				Samples: []prompb.Sample{
-					{
-						Value:     987.81,
-						Timestamp: 1,
-					},
-					{
-						Value:     7.81,
-						Timestamp: 2,
-					},
-					{
-						Value:     18.22,
-						Timestamp: 999,
-					},
-					{
-						Value:     10.11,
-						Timestamp: 1000,
-					},
-				},
-			},
-			{
-				Samples: []prompb.Sample{
-					{
-						Value:     4.33,
-						Timestamp: 3,
-					},
-					{
-						Value:     47.81,
-						Timestamp: 4,
-					},
-					{
-						Value:     99.91,
-						Timestamp: 5,
-					},
-					{
-						Value:     18.22,
-						Timestamp: 8,
-					},
-				},
-			},
-		},
-	}
-	assert.Equal(t, got, want)
-
-	// For a full sanity/logical check, assert that EVERY
-	// Sample has a Timestamp bigger than its prior values.
-	for ti, ts := range got.Timeseries {
-		for i := range ts.Samples {
-			si := ts.Samples[i]
-			for j := 0; j < i; j++ {
-				sj := ts.Samples[j]
-				if sj.Timestamp > si.Timestamp {
-					t.Errorf("Timeseries[%d]: Sample[%d].Timestamp(%d) > Sample[%d].Timestamp(%d)",
-						ti, j, sj.Timestamp, i, si.Timestamp)
-				}
-			}
-		}
 	}
 }

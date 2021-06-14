@@ -19,31 +19,27 @@ import (
 )
 
 // TraceID is an alias of OTLP TraceID data type.
-type TraceID struct {
-	orig data.TraceID
-}
+type TraceID data.TraceID
 
-// InvalidTraceID returns an empty (all zero bytes) TraceID.
 func InvalidTraceID() TraceID {
-	return TraceID{orig: data.NewTraceID([16]byte{})}
+	return TraceID(data.NewTraceID([16]byte{}))
 }
 
-// NewTraceID returns a new TraceID from the given byte array.
 func NewTraceID(bytes [16]byte) TraceID {
-	return TraceID{orig: data.NewTraceID(bytes)}
+	return TraceID(data.NewTraceID(bytes))
 }
 
 // Bytes returns the byte array representation of the TraceID.
 func (t TraceID) Bytes() [16]byte {
-	return t.orig.Bytes()
+	return data.TraceID(t).Bytes()
 }
 
 // HexString returns hex representation of the TraceID.
 func (t TraceID) HexString() string {
-	return t.orig.HexString()
+	return data.TraceID(t).HexString()
 }
 
 // IsEmpty returns true if id doesn't contain at least one non-zero byte.
 func (t TraceID) IsEmpty() bool {
-	return t.orig.IsEmpty()
+	return data.TraceID(t).IsEmpty()
 }

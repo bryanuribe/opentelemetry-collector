@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/service/defaultcomponents"
 )
 
@@ -187,17 +187,17 @@ func TestValidateConfig(t *testing.T) {
 // a config not satisfying the validation.
 type badConfigExtensionFactory struct{}
 
-func (b badConfigExtensionFactory) Type() config.Type {
+func (b badConfigExtensionFactory) Type() configmodels.Type {
 	return "bad_config"
 }
 
-func (b badConfigExtensionFactory) CreateDefaultConfig() config.Extension {
+func (b badConfigExtensionFactory) CreateDefaultConfig() configmodels.Extension {
 	return &struct {
-		config.ExtensionSettings
+		configmodels.ExtensionSettings
 		BadTagField int `mapstructure:"tag-with-dashes"`
 	}{}
 }
 
-func (b badConfigExtensionFactory) CreateExtension(_ context.Context, _ component.ExtensionCreateSettings, _ config.Extension) (component.Extension, error) {
+func (b badConfigExtensionFactory) CreateExtension(_ context.Context, _ component.ExtensionCreateParams, _ configmodels.Extension) (component.Extension, error) {
 	return nil, nil
 }

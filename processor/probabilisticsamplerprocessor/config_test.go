@@ -21,8 +21,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 )
 
@@ -32,14 +33,18 @@ func TestLoadConfig(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Processors[typeStr] = factory
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
-	require.NoError(t, err)
+	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
+
+	require.Nil(t, err)
 	require.NotNil(t, cfg)
 
-	p0 := cfg.Processors[config.NewID(typeStr)]
+	p0 := cfg.Processors["probabilistic_sampler"]
 	assert.Equal(t, p0,
 		&Config{
-			ProcessorSettings:  config.NewProcessorSettings(config.NewID(typeStr)),
+			ProcessorSettings: configmodels.ProcessorSettings{
+				TypeVal: "probabilistic_sampler",
+				NameVal: "probabilistic_sampler",
+			},
 			SamplingPercentage: 15.3,
 			HashSeed:           22,
 		})
@@ -49,14 +54,14 @@ func TestLoadConfig(t *testing.T) {
 func TestLoadConfigEmpty(t *testing.T) {
 	factories, err := componenttest.NopFactories()
 	require.NoError(t, err)
-
-	factory := NewFactory()
-	factories.Processors[typeStr] = factory
-
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "empty.yaml"), factories)
+	factories.Processors, err = component.MakeProcessorFactoryMap(NewFactory())
+	require.NotNil(t, factories.Processors)
 	require.NoError(t, err)
-	require.NotNil(t, cfg)
 
-	p0 := cfg.Processors[config.NewID(typeStr)]
+	config, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "empty.yaml"), factories)
+
+	require.Nil(t, err)
+	require.NotNil(t, config)
+	p0 := config.Processors["probabilistic_sampler"]
 	assert.Equal(t, p0, createDefaultConfig())
 }

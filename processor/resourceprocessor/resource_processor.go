@@ -29,7 +29,9 @@ type resourceProcessor struct {
 func (rp *resourceProcessor) ProcessTraces(_ context.Context, td pdata.Traces) (pdata.Traces, error) {
 	rss := td.ResourceSpans()
 	for i := 0; i < rss.Len(); i++ {
-		rp.attrProc.Process(rss.At(i).Resource().Attributes())
+		resource := rss.At(i).Resource()
+		attrs := resource.Attributes()
+		rp.attrProc.Process(attrs)
 	}
 	return td, nil
 }
@@ -38,7 +40,11 @@ func (rp *resourceProcessor) ProcessTraces(_ context.Context, td pdata.Traces) (
 func (rp *resourceProcessor) ProcessMetrics(_ context.Context, md pdata.Metrics) (pdata.Metrics, error) {
 	rms := md.ResourceMetrics()
 	for i := 0; i < rms.Len(); i++ {
-		rp.attrProc.Process(rms.At(i).Resource().Attributes())
+		resource := rms.At(i).Resource()
+		if resource.Attributes().Len() == 0 {
+			resource.Attributes().InitEmptyWithCapacity(1)
+		}
+		rp.attrProc.Process(resource.Attributes())
 	}
 	return md, nil
 }
@@ -47,7 +53,9 @@ func (rp *resourceProcessor) ProcessMetrics(_ context.Context, md pdata.Metrics)
 func (rp *resourceProcessor) ProcessLogs(_ context.Context, ld pdata.Logs) (pdata.Logs, error) {
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
-		rp.attrProc.Process(rls.At(i).Resource().Attributes())
+		resource := rls.At(i).Resource()
+		attrs := resource.Attributes()
+		rp.attrProc.Process(attrs)
 	}
 	return ld, nil
 }

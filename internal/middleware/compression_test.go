@@ -85,8 +85,7 @@ func TestHTTPClientCompression(t *testing.T) {
 			res, err := client.Do(req)
 			require.NoError(t, err)
 
-			_, err = ioutil.ReadAll(res.Body)
-			require.NoError(t, err)
+			ioutil.ReadAll(res.Body)
 			require.NoError(t, res.Body.Close(), "failed to close request body: %v", err)
 			require.NoError(t, srv.Close())
 		})

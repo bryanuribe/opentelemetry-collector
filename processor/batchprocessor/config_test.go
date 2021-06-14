@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 )
 
@@ -33,15 +33,15 @@ func TestLoadConfig(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Processors[typeStr] = factory
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
+	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
 
 	require.Nil(t, err)
 	require.NotNil(t, cfg)
 
-	p0 := cfg.Processors[config.NewID(typeStr)]
+	p0 := cfg.Processors["batch"]
 	assert.Equal(t, p0, factory.CreateDefaultConfig())
 
-	p1 := cfg.Processors[config.NewIDWithName(typeStr, "2")]
+	p1 := cfg.Processors["batch/2"]
 
 	timeout := time.Second * 10
 	sendBatchSize := uint32(10000)
@@ -49,37 +49,12 @@ func TestLoadConfig(t *testing.T) {
 
 	assert.Equal(t, p1,
 		&Config{
-			ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "2")),
-			SendBatchSize:     sendBatchSize,
-			SendBatchMaxSize:  sendBatchMaxSize,
-			Timeout:           timeout,
+			ProcessorSettings: configmodels.ProcessorSettings{
+				TypeVal: "batch",
+				NameVal: "batch/2",
+			},
+			SendBatchSize:    sendBatchSize,
+			SendBatchMaxSize: sendBatchMaxSize,
+			Timeout:          timeout,
 		})
-}
-
-func TestValidateConfig_DefaultBatchMaxSize(t *testing.T) {
-	cfg := &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "2")),
-		SendBatchSize:     100,
-		SendBatchMaxSize:  0,
-	}
-	assert.NoError(t, cfg.Validate())
-}
-
-func TestValidateConfig_ValidBatchSizes(t *testing.T) {
-	cfg := &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "2")),
-		SendBatchSize:     100,
-		SendBatchMaxSize:  1000,
-	}
-	assert.NoError(t, cfg.Validate())
-
-}
-
-func TestValidateConfig_InvalidBatchSize(t *testing.T) {
-	cfg := &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "2")),
-		SendBatchSize:     1000,
-		SendBatchMaxSize:  100,
-	}
-	assert.Error(t, cfg.Validate())
 }

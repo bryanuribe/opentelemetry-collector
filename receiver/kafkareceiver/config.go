@@ -15,13 +15,13 @@
 package kafkareceiver
 
 import (
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/exporter/kafkaexporter"
 )
 
 // Config defines configuration for Kafka receiver.
 type Config struct {
-	config.ReceiverSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+	configmodels.ReceiverSettings `mapstructure:",squash"`
 	// The list of kafka brokers (default localhost:9092)
 	Brokers []string `mapstructure:"brokers"`
 	// Kafka protocol version
@@ -40,11 +40,4 @@ type Config struct {
 	Metadata kafkaexporter.Metadata `mapstructure:"metadata"`
 
 	Authentication kafkaexporter.Authentication `mapstructure:"auth"`
-}
-
-var _ config.Receiver = (*Config)(nil)
-
-// Validate checks the receiver configuration is valid
-func (cfg *Config) Validate() error {
-	return nil
 }

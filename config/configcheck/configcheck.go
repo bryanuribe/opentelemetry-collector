@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package configcheck has checks to be applied to configuration
+// objects implemented by factories of components used in the OpenTelemetry
+// collector. It is recommended for implementers of components to run the
+// validations available on this package.
 package configcheck
 
 import (
@@ -31,29 +35,28 @@ var configFieldTagRegExp = regexp.MustCompile("^[a-z0-9][a-z0-9_]*$")
 // are satisfying the patterns used by the collector.
 func ValidateConfigFromFactories(factories component.Factories) error {
 	var errs []error
+	var configs []interface{}
 
 	for _, factory := range factories.Receivers {
-		if err := ValidateConfig(factory.CreateDefaultConfig()); err != nil {
-			errs = append(errs, err)
-		}
+		configs = append(configs, factory.CreateDefaultConfig())
 	}
 	for _, factory := range factories.Processors {
-		if err := ValidateConfig(factory.CreateDefaultConfig()); err != nil {
-			errs = append(errs, err)
-		}
+		configs = append(configs, factory.CreateDefaultConfig())
 	}
 	for _, factory := range factories.Exporters {
-		if err := ValidateConfig(factory.CreateDefaultConfig()); err != nil {
-			errs = append(errs, err)
-		}
+		configs = append(configs, factory.CreateDefaultConfig())
 	}
 	for _, factory := range factories.Extensions {
-		if err := ValidateConfig(factory.CreateDefaultConfig()); err != nil {
+		configs = append(configs, factory.CreateDefaultConfig())
+	}
+
+	for _, config := range configs {
+		if err := ValidateConfig(config); err != nil {
 			errs = append(errs, err)
 		}
 	}
 
-	return consumererror.Combine(errs)
+	return consumererror.CombineErrors(errs)
 }
 
 // ValidateConfig enforces that given configuration object is following the patterns
@@ -63,12 +66,17 @@ func ValidateConfigFromFactories(factories component.Factories) error {
 // component factory.
 func ValidateConfig(config interface{}) error {
 	t := reflect.TypeOf(config)
+
+	tk := t.Kind()
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
+		tk = t.Kind()
 	}
 
-	if t.Kind() != reflect.Struct {
-		return fmt.Errorf("config must be a struct or a pointer to one, the passed object is a %s", t.Kind())
+	if tk != reflect.Struct {
+		return fmt.Errorf(
+			"config must be a struct or a pointer to one, the passed object is a %s",
+			tk)
 	}
 
 	return validateConfigDataType(t)
@@ -101,7 +109,7 @@ func validateConfigDataType(t reflect.Type) error {
 		// reflect.UnsafePointer.
 	}
 
-	if err := consumererror.Combine(errs); err != nil {
+	if err := consumererror.CombineErrors(errs); err != nil {
 		return fmt.Errorf(
 			"type %q from package %q has invalid config settings: %v",
 			t.Name(),
@@ -155,7 +163,7 @@ func checkStructFieldTags(f reflect.StructField) error {
 
 	if squash {
 		// Field was squashed.
-		if (f.Type.Kind() != reflect.Struct) && (f.Type.Kind() != reflect.Ptr || f.Type.Elem().Kind() != reflect.Struct) {
+		if f.Type.Kind() != reflect.Struct {
 			return fmt.Errorf(
 				"attempt to squash non-struct type on field %q", f.Name)
 		}
@@ -163,7 +171,7 @@ func checkStructFieldTags(f reflect.StructField) error {
 
 	switch f.Type.Kind() {
 	case reflect.Struct:
-		// It is another struct, continue down-level.
+		// It is another struct, continue down-level
 		return validateConfigDataType(f.Type)
 
 	case reflect.Map, reflect.Slice, reflect.Array:

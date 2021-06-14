@@ -22,10 +22,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
@@ -36,12 +38,12 @@ func TestLoadConfig(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Exporters[typeStr] = factory
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
+	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
 
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
-	e0 := cfg.Exporters[config.NewID(typeStr)]
+	e0 := cfg.Exporters["zipkin"]
 
 	// URL doesn't have a default value so set it directly.
 	defaultCfg := factory.CreateDefaultConfig().(*Config)
@@ -49,9 +51,12 @@ func TestLoadConfig(t *testing.T) {
 	assert.Equal(t, defaultCfg, e0)
 	assert.Equal(t, "json", e0.(*Config).Format)
 
-	e1 := cfg.Exporters[config.NewIDWithName(typeStr, "2")]
+	e1 := cfg.Exporters["zipkin/2"]
 	assert.Equal(t, &Config{
-		ExporterSettings: config.NewExporterSettings(config.NewIDWithName(typeStr, "2")),
+		ExporterSettings: configmodels.ExporterSettings{
+			NameVal: "zipkin/2",
+			TypeVal: "zipkin",
+		},
 		RetrySettings: exporterhelper.RetrySettings{
 			Enabled:         true,
 			InitialInterval: 10 * time.Second,
@@ -71,7 +76,7 @@ func TestLoadConfig(t *testing.T) {
 		Format:             "proto",
 		DefaultServiceName: "test_name",
 	}, e1)
-	set := componenttest.NewNopExporterCreateSettings()
-	_, err = factory.CreateTracesExporter(context.Background(), set, e1)
+	params := component.ExporterCreateParams{Logger: zap.NewNop()}
+	_, err = factory.CreateTracesExporter(context.Background(), params, e1)
 	require.NoError(t, err)
 }

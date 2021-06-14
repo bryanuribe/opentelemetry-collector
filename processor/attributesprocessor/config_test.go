@@ -22,7 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 	"go.opentelemetry.io/collector/internal/processor/filterconfig"
 	"go.opentelemetry.io/collector/internal/processor/filterset"
@@ -35,13 +35,16 @@ func TestLoadingConfig(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Processors[typeStr] = factory
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
+	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
 	assert.NoError(t, err)
 	require.NotNil(t, cfg)
 
-	p0 := cfg.Processors[config.NewIDWithName(typeStr, "insert")]
+	p0 := cfg.Processors["attributes/insert"]
 	assert.Equal(t, p0, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "insert")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/insert",
+			TypeVal: typeStr,
+		},
 		Settings: processorhelper.Settings{
 			Actions: []processorhelper.ActionKeyValue{
 				{Key: "attribute1", Value: 123, Action: processorhelper.INSERT},
@@ -50,9 +53,12 @@ func TestLoadingConfig(t *testing.T) {
 		},
 	})
 
-	p1 := cfg.Processors[config.NewIDWithName(typeStr, "update")]
+	p1 := cfg.Processors["attributes/update"]
 	assert.Equal(t, p1, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "update")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/update",
+			TypeVal: typeStr,
+		},
 		Settings: processorhelper.Settings{
 			Actions: []processorhelper.ActionKeyValue{
 				{Key: "boo", FromAttribute: "foo", Action: processorhelper.UPDATE},
@@ -61,9 +67,12 @@ func TestLoadingConfig(t *testing.T) {
 		},
 	})
 
-	p2 := cfg.Processors[config.NewIDWithName(typeStr, "upsert")]
+	p2 := cfg.Processors["attributes/upsert"]
 	assert.Equal(t, p2, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "upsert")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/upsert",
+			TypeVal: typeStr,
+		},
 		Settings: processorhelper.Settings{
 			Actions: []processorhelper.ActionKeyValue{
 				{Key: "region", Value: "planet-earth", Action: processorhelper.UPSERT},
@@ -72,9 +81,12 @@ func TestLoadingConfig(t *testing.T) {
 		},
 	})
 
-	p3 := cfg.Processors[config.NewIDWithName(typeStr, "delete")]
+	p3 := cfg.Processors["attributes/delete"]
 	assert.Equal(t, p3, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "delete")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/delete",
+			TypeVal: typeStr,
+		},
 		Settings: processorhelper.Settings{
 			Actions: []processorhelper.ActionKeyValue{
 				{Key: "credit_card", Action: processorhelper.DELETE},
@@ -83,9 +95,12 @@ func TestLoadingConfig(t *testing.T) {
 		},
 	})
 
-	p4 := cfg.Processors[config.NewIDWithName(typeStr, "hash")]
+	p4 := cfg.Processors["attributes/hash"]
 	assert.Equal(t, p4, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "hash")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/hash",
+			TypeVal: typeStr,
+		},
 		Settings: processorhelper.Settings{
 			Actions: []processorhelper.ActionKeyValue{
 				{Key: "user.email", Action: processorhelper.HASH},
@@ -93,9 +108,12 @@ func TestLoadingConfig(t *testing.T) {
 		},
 	})
 
-	p5 := cfg.Processors[config.NewIDWithName(typeStr, "excludemulti")]
+	p5 := cfg.Processors["attributes/excludemulti"]
 	assert.Equal(t, p5, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "excludemulti")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/excludemulti",
+			TypeVal: typeStr,
+		},
 		MatchConfig: filterconfig.MatchConfig{
 			Exclude: &filterconfig.MatchProperties{
 				Config:   *createConfig(filterset.Strict),
@@ -114,9 +132,12 @@ func TestLoadingConfig(t *testing.T) {
 		},
 	})
 
-	p6 := cfg.Processors[config.NewIDWithName(typeStr, "includeservices")]
+	p6 := cfg.Processors["attributes/includeservices"]
 	assert.Equal(t, p6, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "includeservices")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/includeservices",
+			TypeVal: typeStr,
+		},
 		MatchConfig: filterconfig.MatchConfig{
 			Include: &filterconfig.MatchProperties{
 				Config:   *createConfig(filterset.Regexp),
@@ -131,9 +152,12 @@ func TestLoadingConfig(t *testing.T) {
 		},
 	})
 
-	p7 := cfg.Processors[config.NewIDWithName(typeStr, "selectiveprocessing")]
+	p7 := cfg.Processors["attributes/selectiveprocessing"]
 	assert.Equal(t, p7, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "selectiveprocessing")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/selectiveprocessing",
+			TypeVal: typeStr,
+		},
 		MatchConfig: filterconfig.MatchConfig{
 			Include: &filterconfig.MatchProperties{
 				Config:   *createConfig(filterset.Strict),
@@ -154,9 +178,12 @@ func TestLoadingConfig(t *testing.T) {
 		},
 	})
 
-	p8 := cfg.Processors[config.NewIDWithName(typeStr, "complex")]
+	p8 := cfg.Processors["attributes/complex"]
 	assert.Equal(t, p8, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "complex")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/complex",
+			TypeVal: typeStr,
+		},
 		Settings: processorhelper.Settings{
 			Actions: []processorhelper.ActionKeyValue{
 				{Key: "operation", Value: "default", Action: processorhelper.INSERT},
@@ -166,9 +193,12 @@ func TestLoadingConfig(t *testing.T) {
 		},
 	})
 
-	p9 := cfg.Processors[config.NewIDWithName(typeStr, "example")]
+	p9 := cfg.Processors["attributes/example"]
 	assert.Equal(t, p9, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "example")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/example",
+			TypeVal: typeStr,
+		},
 		Settings: processorhelper.Settings{
 			Actions: []processorhelper.ActionKeyValue{
 				{Key: "db.table", Action: processorhelper.DELETE},
@@ -180,9 +210,12 @@ func TestLoadingConfig(t *testing.T) {
 		},
 	})
 
-	p10 := cfg.Processors[config.NewIDWithName(typeStr, "regexp")]
+	p10 := cfg.Processors["attributes/regexp"]
 	assert.Equal(t, p10, &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewIDWithName(typeStr, "regexp")),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			NameVal: "attributes/regexp",
+			TypeVal: typeStr,
+		},
 		MatchConfig: filterconfig.MatchConfig{
 			Include: &filterconfig.MatchProperties{
 				Config:   *createConfig(filterset.Regexp),

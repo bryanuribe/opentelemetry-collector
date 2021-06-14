@@ -15,23 +15,15 @@
 package zpagesextension
 
 import (
-	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/config/confignet"
+	"go.opentelemetry.io/collector/config/configmodels"
 )
 
 // Config has the configuration for the extension enabling the zPages extension.
 type Config struct {
-	config.ExtensionSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+	configmodels.ExtensionSettings `mapstructure:",squash"`
 
-	// TCPAddr is the address and port in which the zPages will be listening to.
+	// Endpoint is the address and port in which the zPages will be listening to.
 	// Use localhost:<port> to make it available only locally, or ":<port>" to
 	// make it available on all network interfaces.
-	TCPAddr confignet.TCPAddr `mapstructure:",squash"`
-}
-
-var _ config.Extension = (*Config)(nil)
-
-// Validate checks if the extension configuration is valid
-func (cfg *Config) Validate() error {
-	return nil
+	Endpoint string `mapstructure:"endpoint"`
 }

@@ -19,7 +19,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 )
@@ -29,35 +29,38 @@ const (
 	typeStr = "resource"
 )
 
-var processorCapabilities = consumer.Capabilities{MutatesData: true}
+var processorCapabilities = component.ProcessorCapabilities{MutatesConsumedData: true}
 
 // NewFactory returns a new factory for the Resource processor.
 func NewFactory() component.ProcessorFactory {
 	return processorhelper.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		processorhelper.WithTraces(createTracesProcessor),
+		processorhelper.WithTraces(createTraceProcessor),
 		processorhelper.WithMetrics(createMetricsProcessor),
 		processorhelper.WithLogs(createLogsProcessor))
 }
 
 // Note: This isn't a valid configuration because the processor would do no work.
-func createDefaultConfig() config.Processor {
+func createDefaultConfig() configmodels.Processor {
 	return &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
+		ProcessorSettings: configmodels.ProcessorSettings{
+			TypeVal: typeStr,
+			NameVal: typeStr,
+		},
 	}
 }
 
-func createTracesProcessor(
+func createTraceProcessor(
 	_ context.Context,
-	_ component.ProcessorCreateSettings,
-	cfg config.Processor,
+	_ component.ProcessorCreateParams,
+	cfg configmodels.Processor,
 	nextConsumer consumer.Traces) (component.TracesProcessor, error) {
 	attrProc, err := createAttrProcessor(cfg.(*Config))
 	if err != nil {
 		return nil, err
 	}
-	return processorhelper.NewTracesProcessor(
+	return processorhelper.NewTraceProcessor(
 		cfg,
 		nextConsumer,
 		&resourceProcessor{attrProc: attrProc},
@@ -66,8 +69,8 @@ func createTracesProcessor(
 
 func createMetricsProcessor(
 	_ context.Context,
-	_ component.ProcessorCreateSettings,
-	cfg config.Processor,
+	_ component.ProcessorCreateParams,
+	cfg configmodels.Processor,
 	nextConsumer consumer.Metrics) (component.MetricsProcessor, error) {
 	attrProc, err := createAttrProcessor(cfg.(*Config))
 	if err != nil {
@@ -82,8 +85,8 @@ func createMetricsProcessor(
 
 func createLogsProcessor(
 	_ context.Context,
-	_ component.ProcessorCreateSettings,
-	cfg config.Processor,
+	_ component.ProcessorCreateParams,
+	cfg configmodels.Processor,
 	nextConsumer consumer.Logs) (component.LogsProcessor, error) {
 	attrProc, err := createAttrProcessor(cfg.(*Config))
 	if err != nil {
@@ -98,11 +101,11 @@ func createLogsProcessor(
 
 func createAttrProcessor(cfg *Config) (*processorhelper.AttrProc, error) {
 	if len(cfg.AttributesActions) == 0 {
-		return nil, fmt.Errorf("error creating \"%v\" processor due to missing required field \"attributes\"", cfg.ID())
+		return nil, fmt.Errorf("error creating \"%q\" processor due to missing required field \"attributes\"", cfg.Name())
 	}
 	attrProc, err := processorhelper.NewAttrProc(&processorhelper.Settings{Actions: cfg.AttributesActions})
 	if err != nil {
-		return nil, fmt.Errorf("error creating \"%v\" processor: %w", cfg.ID(), err)
+		return nil, fmt.Errorf("error creating \"%q\" processor: %w", cfg.Name(), err)
 	}
 	return attrProc, nil
 }

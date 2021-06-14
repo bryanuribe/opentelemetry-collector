@@ -19,15 +19,14 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter/kafkaexporter"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 )
 
 const (
-	typeStr = "kafka"
-
+	typeStr         = "kafka"
 	defaultTopic    = "otlp_spans"
 	defaultEncoding = "otlp_proto"
 	defaultBroker   = "localhost:9092"
@@ -45,20 +44,11 @@ const (
 // FactoryOption applies changes to kafkaExporterFactory.
 type FactoryOption func(factory *kafkaReceiverFactory)
 
-// WithTracesUnmarshalers adds Unmarshalers.
-func WithTracesUnmarshalers(tracesUnmarshalers ...TracesUnmarshaler) FactoryOption {
+// WithAddUnmarshallers adds marshallers.
+func WithAddUnmarshallers(encodingMarshaller map[string]Unmarshaller) FactoryOption {
 	return func(factory *kafkaReceiverFactory) {
-		for _, unmarshaler := range tracesUnmarshalers {
-			factory.tracesUnmarshalers[unmarshaler.Encoding()] = unmarshaler
-		}
-	}
-}
-
-// WithLogsUnmarshalers adds LogsUnmarshalers.
-func WithLogsUnmarshalers(logsUnmarshalers ...LogsUnmarshaler) FactoryOption {
-	return func(factory *kafkaReceiverFactory) {
-		for _, unmarshaler := range logsUnmarshalers {
-			factory.logsUnmarshalers[unmarshaler.Encoding()] = unmarshaler
+		for encoding, unmarshaller := range encodingMarshaller {
+			factory.unmarshalers[encoding] = unmarshaller
 		}
 	}
 }
@@ -66,8 +56,7 @@ func WithLogsUnmarshalers(logsUnmarshalers ...LogsUnmarshaler) FactoryOption {
 // NewFactory creates Kafka receiver factory.
 func NewFactory(options ...FactoryOption) component.ReceiverFactory {
 	f := &kafkaReceiverFactory{
-		tracesUnmarshalers: defaultTracesUnmarshalers(),
-		logsUnmarshalers:   defaultLogsUnmarshalers(),
+		unmarshalers: defaultUnmarshallers(),
 	}
 	for _, o := range options {
 		o(f)
@@ -75,19 +64,20 @@ func NewFactory(options ...FactoryOption) component.ReceiverFactory {
 	return receiverhelper.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		receiverhelper.WithTraces(f.createTracesReceiver),
-		receiverhelper.WithLogs(f.createLogsReceiver),
-	)
+		receiverhelper.WithTraces(f.createTraceReceiver))
 }
 
-func createDefaultConfig() config.Receiver {
+func createDefaultConfig() configmodels.Receiver {
 	return &Config{
-		ReceiverSettings: config.NewReceiverSettings(config.NewID(typeStr)),
-		Topic:            defaultTopic,
-		Encoding:         defaultEncoding,
-		Brokers:          []string{defaultBroker},
-		ClientID:         defaultClientID,
-		GroupID:          defaultGroupID,
+		ReceiverSettings: configmodels.ReceiverSettings{
+			TypeVal: typeStr,
+			NameVal: typeStr,
+		},
+		Topic:    defaultTopic,
+		Encoding: defaultEncoding,
+		Brokers:  []string{defaultBroker},
+		ClientID: defaultClientID,
+		GroupID:  defaultGroupID,
 		Metadata: kafkaexporter.Metadata{
 			Full: defaultMetadataFull,
 			Retry: kafkaexporter.MetadataRetry{
@@ -99,32 +89,17 @@ func createDefaultConfig() config.Receiver {
 }
 
 type kafkaReceiverFactory struct {
-	tracesUnmarshalers map[string]TracesUnmarshaler
-	logsUnmarshalers   map[string]LogsUnmarshaler
+	unmarshalers map[string]Unmarshaller
 }
 
-func (f *kafkaReceiverFactory) createTracesReceiver(
+func (f *kafkaReceiverFactory) createTraceReceiver(
 	_ context.Context,
-	set component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	params component.ReceiverCreateParams,
+	cfg configmodels.Receiver,
 	nextConsumer consumer.Traces,
 ) (component.TracesReceiver, error) {
 	c := cfg.(*Config)
-	r, err := newTracesReceiver(*c, set, f.tracesUnmarshalers, nextConsumer)
-	if err != nil {
-		return nil, err
-	}
-	return r, nil
-}
-
-func (f *kafkaReceiverFactory) createLogsReceiver(
-	_ context.Context,
-	set component.ReceiverCreateSettings,
-	cfg config.Receiver,
-	nextConsumer consumer.Logs,
-) (component.LogsReceiver, error) {
-	c := cfg.(*Config)
-	r, err := newLogsReceiver(*c, set, f.logsUnmarshalers, nextConsumer)
+	r, err := newReceiver(*c, params, f.unmarshalers, nextConsumer)
 	if err != nil {
 		return nil, err
 	}

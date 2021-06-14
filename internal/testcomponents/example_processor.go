@@ -18,7 +18,7 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 )
@@ -26,10 +26,10 @@ import (
 // ExampleProcessorCfg is for testing purposes. We are defining an example config and factory
 // for "exampleprocessor" processor type.
 type ExampleProcessorCfg struct {
-	config.ProcessorSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
-	ExtraSetting             string                   `mapstructure:"extra"`
-	ExtraMapSetting          map[string]string        `mapstructure:"extra_map"`
-	ExtraListSetting         []string                 `mapstructure:"extra_list"`
+	configmodels.ProcessorSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+	ExtraSetting                   string                   `mapstructure:"extra"`
+	ExtraMapSetting                map[string]string        `mapstructure:"extra_map"`
+	ExtraListSetting               []string                 `mapstructure:"extra_list"`
 }
 
 const procType = "exampleprocessor"
@@ -43,24 +43,27 @@ var ExampleProcessorFactory = processorhelper.NewFactory(
 	processorhelper.WithLogs(createLogsProcessor))
 
 // CreateDefaultConfig creates the default configuration for the Processor.
-func createDefaultConfig() config.Processor {
+func createDefaultConfig() configmodels.Processor {
 	return &ExampleProcessorCfg{
-		ProcessorSettings: config.NewProcessorSettings(config.NewID(procType)),
-		ExtraSetting:      "some export string",
-		ExtraMapSetting:   nil,
-		ExtraListSetting:  nil,
+		ProcessorSettings: configmodels.ProcessorSettings{
+			TypeVal: procType,
+			NameVal: procType,
+		},
+		ExtraSetting:     "some export string",
+		ExtraMapSetting:  nil,
+		ExtraListSetting: nil,
 	}
 }
 
-func createTracesProcessor(_ context.Context, _ component.ProcessorCreateSettings, _ config.Processor, nextConsumer consumer.Traces) (component.TracesProcessor, error) {
+func createTracesProcessor(_ context.Context, _ component.ProcessorCreateParams, _ configmodels.Processor, nextConsumer consumer.Traces) (component.TracesProcessor, error) {
 	return &exampleProcessor{Traces: nextConsumer}, nil
 }
 
-func createMetricsProcessor(_ context.Context, _ component.ProcessorCreateSettings, _ config.Processor, nextConsumer consumer.Metrics) (component.MetricsProcessor, error) {
+func createMetricsProcessor(_ context.Context, _ component.ProcessorCreateParams, _ configmodels.Processor, nextConsumer consumer.Metrics) (component.MetricsProcessor, error) {
 	return &exampleProcessor{Metrics: nextConsumer}, nil
 }
 
-func createLogsProcessor(_ context.Context, _ component.ProcessorCreateSettings, _ config.Processor, nextConsumer consumer.Logs) (component.LogsProcessor, error) {
+func createLogsProcessor(_ context.Context, _ component.ProcessorCreateParams, _ configmodels.Processor, nextConsumer consumer.Logs) (component.LogsProcessor, error) {
 	return &exampleProcessor{Logs: nextConsumer}, nil
 }
 
@@ -78,6 +81,6 @@ func (ep *exampleProcessor) Shutdown(_ context.Context) error {
 	return nil
 }
 
-func (ep *exampleProcessor) Capabilities() consumer.Capabilities {
-	return consumer.Capabilities{MutatesData: false}
+func (ep *exampleProcessor) GetCapabilities() component.ProcessorCapabilities {
+	return component.ProcessorCapabilities{MutatesConsumedData: false}
 }

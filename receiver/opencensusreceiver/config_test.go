@@ -23,8 +23,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configgrpc"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/config/configtest"
 	"go.opentelemetry.io/collector/config/configtls"
@@ -36,20 +36,23 @@ func TestLoadConfig(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Receivers[typeStr] = factory
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
+	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
 
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
 	assert.Equal(t, len(cfg.Receivers), 7)
 
-	r0 := cfg.Receivers[config.NewID(typeStr)]
+	r0 := cfg.Receivers["opencensus"]
 	assert.Equal(t, r0, factory.CreateDefaultConfig())
 
-	r1 := cfg.Receivers[config.NewIDWithName(typeStr, "customname")].(*Config)
+	r1 := cfg.Receivers["opencensus/customname"].(*Config)
 	assert.Equal(t, r1,
 		&Config{
-			ReceiverSettings: config.NewReceiverSettings(config.NewIDWithName(typeStr, "customname")),
+			ReceiverSettings: configmodels.ReceiverSettings{
+				TypeVal: typeStr,
+				NameVal: "opencensus/customname",
+			},
 			GRPCServerSettings: configgrpc.GRPCServerSettings{
 				NetAddr: confignet.NetAddr{
 					Endpoint:  "0.0.0.0:9090",
@@ -59,10 +62,13 @@ func TestLoadConfig(t *testing.T) {
 			},
 		})
 
-	r2 := cfg.Receivers[config.NewIDWithName(typeStr, "keepalive")].(*Config)
+	r2 := cfg.Receivers["opencensus/keepalive"].(*Config)
 	assert.Equal(t, r2,
 		&Config{
-			ReceiverSettings: config.NewReceiverSettings(config.NewIDWithName(typeStr, "keepalive")),
+			ReceiverSettings: configmodels.ReceiverSettings{
+				TypeVal: typeStr,
+				NameVal: "opencensus/keepalive",
+			},
 			GRPCServerSettings: configgrpc.GRPCServerSettings{
 				NetAddr: confignet.NetAddr{
 					Endpoint:  "0.0.0.0:55678",
@@ -85,10 +91,13 @@ func TestLoadConfig(t *testing.T) {
 			},
 		})
 
-	r3 := cfg.Receivers[config.NewIDWithName(typeStr, "msg-size-conc-connect-max-idle")].(*Config)
+	r3 := cfg.Receivers["opencensus/msg-size-conc-connect-max-idle"].(*Config)
 	assert.Equal(t, r3,
 		&Config{
-			ReceiverSettings: config.NewReceiverSettings(config.NewIDWithName(typeStr, "msg-size-conc-connect-max-idle")),
+			ReceiverSettings: configmodels.ReceiverSettings{
+				TypeVal: typeStr,
+				NameVal: "opencensus/msg-size-conc-connect-max-idle",
+			},
 			GRPCServerSettings: configgrpc.GRPCServerSettings{
 				NetAddr: confignet.NetAddr{
 					Endpoint:  "0.0.0.0:55678",
@@ -108,10 +117,13 @@ func TestLoadConfig(t *testing.T) {
 
 	// TODO(ccaraman): Once the config loader checks for the files existence, this test may fail and require
 	// 	use of fake cert/key for test purposes.
-	r4 := cfg.Receivers[config.NewIDWithName(typeStr, "tlscredentials")].(*Config)
+	r4 := cfg.Receivers["opencensus/tlscredentials"].(*Config)
 	assert.Equal(t, r4,
 		&Config{
-			ReceiverSettings: config.NewReceiverSettings(config.NewIDWithName(typeStr, "tlscredentials")),
+			ReceiverSettings: configmodels.ReceiverSettings{
+				TypeVal: typeStr,
+				NameVal: "opencensus/tlscredentials",
+			},
 			GRPCServerSettings: configgrpc.GRPCServerSettings{
 				NetAddr: confignet.NetAddr{
 					Endpoint:  "0.0.0.0:55678",
@@ -127,10 +139,13 @@ func TestLoadConfig(t *testing.T) {
 			},
 		})
 
-	r5 := cfg.Receivers[config.NewIDWithName(typeStr, "cors")].(*Config)
+	r5 := cfg.Receivers["opencensus/cors"].(*Config)
 	assert.Equal(t, r5,
 		&Config{
-			ReceiverSettings: config.NewReceiverSettings(config.NewIDWithName(typeStr, "cors")),
+			ReceiverSettings: configmodels.ReceiverSettings{
+				TypeVal: typeStr,
+				NameVal: "opencensus/cors",
+			},
 			GRPCServerSettings: configgrpc.GRPCServerSettings{
 				NetAddr: confignet.NetAddr{
 					Endpoint:  "0.0.0.0:55678",
@@ -141,10 +156,13 @@ func TestLoadConfig(t *testing.T) {
 			CorsOrigins: []string{"https://*.test.com", "https://test.com"},
 		})
 
-	r6 := cfg.Receivers[config.NewIDWithName(typeStr, "uds")].(*Config)
+	r6 := cfg.Receivers["opencensus/uds"].(*Config)
 	assert.Equal(t, r6,
 		&Config{
-			ReceiverSettings: config.NewReceiverSettings(config.NewIDWithName(typeStr, "uds")),
+			ReceiverSettings: configmodels.ReceiverSettings{
+				TypeVal: typeStr,
+				NameVal: "opencensus/uds",
+			},
 			GRPCServerSettings: configgrpc.GRPCServerSettings{
 				NetAddr: confignet.NetAddr{
 					Endpoint:  "/tmp/opencensus.sock",
@@ -153,4 +171,26 @@ func TestLoadConfig(t *testing.T) {
 				ReadBufferSize: 512 * 1024,
 			},
 		})
+}
+
+func TestBuildOptions_TLSCredentials(t *testing.T) {
+	cfg := Config{
+		ReceiverSettings: configmodels.ReceiverSettings{
+			NameVal: "IncorrectTLS",
+		},
+		GRPCServerSettings: configgrpc.GRPCServerSettings{
+			TLSSetting: &configtls.TLSServerSetting{
+				TLSSetting: configtls.TLSSetting{
+					CertFile: "willfail",
+				},
+			},
+		},
+	}
+	_, err := cfg.buildOptions()
+	assert.EqualError(t, err, `failed to load TLS config: for auth via TLS, either both certificate and key must be supplied, or neither`)
+
+	cfg.TLSSetting = &configtls.TLSServerSetting{}
+	opt, err := cfg.buildOptions()
+	assert.NoError(t, err)
+	assert.NotNil(t, opt)
 }

@@ -20,30 +20,35 @@ import (
 	"testing"
 	"time"
 
+	metricspb "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
+	resourcepb "github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/internal/goldendataset"
 	"go.opentelemetry.io/collector/internal/processor/filterconfig"
 	"go.opentelemetry.io/collector/internal/processor/filtermetric"
+	"go.opentelemetry.io/collector/translator/internaldata"
 )
 
 type metricNameTest struct {
 	name               string
 	inc                *filtermetric.MatchProperties
 	exc                *filtermetric.MatchProperties
-	inMetrics          pdata.Metrics
-	outMN              [][]string // output Metric names per Resource
+	inMN               [][]*metricspb.Metric // input Metric batches
+	outMN              [][]string            // output Metric names
 	allMetricsFiltered bool
 }
 
 type metricWithResource struct {
-	metricNames        []string
-	resourceAttributes map[string]pdata.AttributeValue
+	metricNames []string
+	resource    *resourcepb.Resource
 }
 
 var (
@@ -78,10 +83,8 @@ var (
 	inMetricForResourceTest = []metricWithResource{
 		{
 			metricNames: []string{"metric1", "metric2"},
-			resourceAttributes: map[string]pdata.AttributeValue{
-				"attr1": pdata.NewAttributeValueString("attr1/val1"),
-				"attr2": pdata.NewAttributeValueString("attr2/val2"),
-				"attr3": pdata.NewAttributeValueString("attr3/val3"),
+			resource: &resourcepb.Resource{
+				Labels: map[string]string{"attr1": "attr1/val1", "attr2": "attr2/val2", "attr3": "attr3/val3"},
 			},
 		},
 	}
@@ -89,14 +92,14 @@ var (
 	inMetricForTwoResource = []metricWithResource{
 		{
 			metricNames: []string{"metric1", "metric2"},
-			resourceAttributes: map[string]pdata.AttributeValue{
-				"attr1": pdata.NewAttributeValueString("attr1/val1"),
+			resource: &resourcepb.Resource{
+				Labels: map[string]string{"attr1": "attr1/val1"},
 			},
 		},
 		{
 			metricNames: []string{"metric3", "metric4"},
-			resourceAttributes: map[string]pdata.AttributeValue{
-				"attr1": pdata.NewAttributeValueString("attr1/val2"),
+			resource: &resourcepb.Resource{
+				Labels: map[string]string{"attr1": "attr1/val2"},
 			},
 		},
 	}
@@ -108,9 +111,9 @@ var (
 
 	standardTests = []metricNameTest{
 		{
-			name:      "includeFilter",
-			inc:       regexpMetricsFilterProperties,
-			inMetrics: testResourceMetrics([]metricWithResource{{metricNames: inMetricNames}}),
+			name: "includeFilter",
+			inc:  regexpMetricsFilterProperties,
+			inMN: [][]*metricspb.Metric{metricsWithName(inMetricNames)},
 			outMN: [][]string{{
 				"full_name_match",
 				"prefix/test/match",
@@ -126,9 +129,9 @@ var (
 			}},
 		},
 		{
-			name:      "excludeFilter",
-			exc:       regexpMetricsFilterProperties,
-			inMetrics: testResourceMetrics([]metricWithResource{{metricNames: inMetricNames}}),
+			name: "excludeFilter",
+			exc:  regexpMetricsFilterProperties,
+			inMN: [][]*metricspb.Metric{metricsWithName(inMetricNames)},
 			outMN: [][]string{{
 				"not_exact_string_match",
 				"random",
@@ -145,7 +148,7 @@ var (
 					"test_contains_match",
 				},
 			},
-			inMetrics: testResourceMetrics([]metricWithResource{{metricNames: inMetricNames}}),
+			inMN: [][]*metricspb.Metric{metricsWithName(inMetricNames)},
 			outMN: [][]string{{
 				"full_name_match",
 				"prefix/test/match",
@@ -161,7 +164,7 @@ var (
 			}},
 		},
 		{
-			name: "includeAndExcludeWithEmptyResourceMetrics",
+			name: "includeAndExcludeWithEmptyAndNil",
 			inc:  regexpMetricsFilterProperties,
 			exc: &filtermetric.MatchProperties{
 				MatchType: filtermetric.Strict,
@@ -170,7 +173,7 @@ var (
 					"test_contains_match",
 				},
 			},
-			inMetrics: testResourceMetrics([]metricWithResource{{}, {metricNames: inMetricNames}}),
+			inMN: [][]*metricspb.Metric{nil, metricsWithName(inMetricNames), {}},
 			outMN: [][]string{
 				{
 					"full_name_match",
@@ -192,7 +195,7 @@ var (
 			inc: &filtermetric.MatchProperties{
 				MatchType: filtermetric.Strict,
 			},
-			inMetrics:          testResourceMetrics([]metricWithResource{{metricNames: inMetricNames}}),
+			inMN:               [][]*metricspb.Metric{metricsWithName(inMetricNames)},
 			allMetricsFiltered: true,
 		},
 		{
@@ -200,13 +203,13 @@ var (
 			exc: &filtermetric.MatchProperties{
 				MatchType: filtermetric.Strict,
 			},
-			inMetrics: testResourceMetrics([]metricWithResource{{metricNames: inMetricNames}}),
-			outMN:     [][]string{inMetricNames},
+			inMN:  [][]*metricspb.Metric{metricsWithName(inMetricNames)},
+			outMN: [][]string{inMetricNames},
 		},
 		{
-			name:      "includeWithNilResourceAttributes",
-			inc:       regexpMetricsFilterProperties,
-			inMetrics: testResourceMetrics([]metricWithResource{{metricNames: inMetricNames}}),
+			name: "includeWithNilResourceAttributes",
+			inc:  regexpMetricsFilterProperties,
+			inMN: [][]*metricspb.Metric{metricsWithNameAndResource([]metricWithResource{{metricNames: inMetricNames, resource: nil}})},
 			outMN: [][]string{{
 				"full_name_match",
 				"prefix/test/match",
@@ -226,9 +229,10 @@ var (
 			exc: &filtermetric.MatchProperties{
 				MatchType: filtermetric.Strict,
 			},
-			inMetrics: testResourceMetrics(inMetricForResourceTest),
+			inMN: [][]*metricspb.Metric{metricsWithNameAndResource(inMetricForResourceTest)},
 			outMN: [][]string{
-				{"metric1", "metric2"},
+				{"metric1"},
+				{"metric2"},
 			},
 		},
 		{
@@ -241,9 +245,10 @@ var (
 				},
 				ResourceAttributes: []filterconfig.Attribute{{Key: "attr1", Value: "attr1/val1"}},
 			},
-			inMetrics: testResourceMetrics(inMetricForResourceTest),
+			inMN: [][]*metricspb.Metric{metricsWithNameAndResource(inMetricForResourceTest)},
 			outMN: [][]string{
-				{"metric1", "metric2"},
+				{"metric1"},
+				{"metric2"},
 			},
 		},
 		{
@@ -258,9 +263,10 @@ var (
 				},
 				ResourceAttributes: []filterconfig.Attribute{{Key: "attr1", Value: "attr1/val1"}},
 			},
-			inMetrics: testResourceMetrics(inMetricForTwoResource),
+			inMN: [][]*metricspb.Metric{metricsWithNameAndResource(inMetricForTwoResource)},
 			outMN: [][]string{
-				{"metric1", "metric2"},
+				{"metric1"},
+				{"metric2"},
 			},
 		},
 		{
@@ -269,9 +275,10 @@ var (
 				MatchType:          filtermetric.Strict,
 				ResourceAttributes: []filterconfig.Attribute{{Key: "attr1", Value: "attr1/val1"}},
 			},
-			inMetrics: testResourceMetrics(inMetricForTwoResource),
+			inMN: [][]*metricspb.Metric{metricsWithNameAndResource(inMetricForTwoResource)},
 			outMN: [][]string{
-				{"metric3", "metric4"},
+				{"metric3"},
+				{"metric4"},
 			},
 		},
 		{
@@ -284,7 +291,7 @@ var (
 				},
 				ResourceAttributes: []filterconfig.Attribute{{Key: "attr1", Value: "(attr1/val1|attr1/val2)"}},
 			},
-			inMetrics: testResourceMetrics(inMetricForTwoResource),
+			inMN: [][]*metricspb.Metric{metricsWithNameAndResource(inMetricForTwoResource)},
 			outMN: [][]string{
 				{"metric1"},
 				{"metric3"},
@@ -299,7 +306,10 @@ func TestFilterMetricProcessor(t *testing.T) {
 			// next stores the results of the filter metric processor
 			next := new(consumertest.MetricsSink)
 			cfg := &Config{
-				ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
+				ProcessorSettings: configmodels.ProcessorSettings{
+					TypeVal: typeStr,
+					NameVal: typeStr,
+				},
 				Metrics: MetricFilters{
 					Include: test.inc,
 					Exclude: test.exc,
@@ -308,19 +318,27 @@ func TestFilterMetricProcessor(t *testing.T) {
 			factory := NewFactory()
 			fmp, err := factory.CreateMetricsProcessor(
 				context.Background(),
-				componenttest.NewNopProcessorCreateSettings(),
+				component.ProcessorCreateParams{
+					Logger: zap.NewNop(),
+				},
 				cfg,
 				next,
 			)
 			assert.NotNil(t, fmp)
 			assert.Nil(t, err)
 
-			caps := fmp.Capabilities()
-			assert.True(t, caps.MutatesData)
+			caps := fmp.GetCapabilities()
+			assert.False(t, caps.MutatesConsumedData)
 			ctx := context.Background()
 			assert.NoError(t, fmp.Start(ctx, nil))
 
-			cErr := fmp.ConsumeMetrics(context.Background(), test.inMetrics)
+			mds := make([]internaldata.MetricsData, len(test.inMN))
+			for i, metrics := range test.inMN {
+				mds[i] = internaldata.MetricsData{
+					Metrics: metrics,
+				}
+			}
+			cErr := fmp.ConsumeMetrics(context.Background(), internaldata.OCSliceToMetrics(mds))
 			assert.Nil(t, cErr)
 			got := next.AllMetrics()
 
@@ -330,12 +348,12 @@ func TestFilterMetricProcessor(t *testing.T) {
 			}
 
 			require.Equal(t, 1, len(got))
-			require.Equal(t, len(test.outMN), got[0].ResourceMetrics().Len())
+			gotMD := internaldata.MetricsToOC(got[0])
+			require.Equal(t, len(test.outMN), len(gotMD))
 			for i, wantOut := range test.outMN {
-				gotMetrics := got[0].ResourceMetrics().At(i).InstrumentationLibraryMetrics().At(0).Metrics()
-				assert.Equal(t, len(wantOut), gotMetrics.Len())
-				for idx := range wantOut {
-					assert.Equal(t, wantOut[idx], gotMetrics.At(idx).Name())
+				assert.Equal(t, len(wantOut), len(gotMD[i].Metrics))
+				for idx, out := range gotMD[i].Metrics {
+					assert.Equal(t, wantOut[idx], out.MetricDescriptor.Name)
 				}
 			}
 			assert.NoError(t, fmp.Shutdown(ctx))
@@ -343,21 +361,61 @@ func TestFilterMetricProcessor(t *testing.T) {
 	}
 }
 
-func testResourceMetrics(mwrs []metricWithResource) pdata.Metrics {
-	md := pdata.NewMetrics()
+func metricsWithName(names []string) []*metricspb.Metric {
+	ret := make([]*metricspb.Metric, len(names))
+	now := time.Now()
+	for i, name := range names {
+		ret[i] = &metricspb.Metric{
+			MetricDescriptor: &metricspb.MetricDescriptor{
+				Name: name,
+				Type: metricspb.MetricDescriptor_GAUGE_INT64,
+			},
+			Timeseries: []*metricspb.TimeSeries{
+				{
+					Points: []*metricspb.Point{
+						{
+							Timestamp: timestamppb.New(now.Add(10 * time.Second)),
+							Value: &metricspb.Point_Int64Value{
+								Int64Value: int64(123),
+							},
+						},
+					},
+				},
+			},
+		}
+	}
+	return ret
+}
+
+func metricsWithNameAndResource(metrics []metricWithResource) []*metricspb.Metric {
+	var md []*metricspb.Metric
 	now := time.Now()
 
-	for _, mwr := range mwrs {
-		rm := md.ResourceMetrics().AppendEmpty()
-		rm.Resource().Attributes().InitFromMap(mwr.resourceAttributes)
-		ms := rm.InstrumentationLibraryMetrics().AppendEmpty().Metrics()
-		for _, name := range mwr.metricNames {
-			m := ms.AppendEmpty()
-			m.SetName(name)
-			m.SetDataType(pdata.MetricDataTypeDoubleGauge)
-			dp := m.DoubleGauge().DataPoints().AppendEmpty()
-			dp.SetTimestamp(pdata.TimestampFromTime(now.Add(10 * time.Second)))
-			dp.SetValue(123)
+	for _, m := range metrics {
+		names := m.metricNames
+		ret := make([]*metricspb.Metric, len(names))
+
+		for i, name := range names {
+			ret[i] = &metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: name,
+					Type: metricspb.MetricDescriptor_GAUGE_INT64,
+				},
+				Resource: m.resource,
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						Points: []*metricspb.Point{
+							{
+								Timestamp: timestamppb.New(now.Add(10 * time.Second)),
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: int64(123),
+								},
+							},
+						},
+					},
+				},
+			}
+			md = append(md, ret[i])
 		}
 	}
 	return md
@@ -397,13 +455,11 @@ func benchmarkFilter(b *testing.B, mp *filtermetric.MatchProperties) {
 	ctx := context.Background()
 	proc, _ := factory.CreateMetricsProcessor(
 		ctx,
-		componenttest.NewNopProcessorCreateSettings(),
+		component.ProcessorCreateParams{},
 		cfg,
-		consumertest.NewNop(),
+		consumertest.NewMetricsNop(),
 	)
 	pdms := metricSlice(128)
-	b.ReportAllocs()
-	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, pdm := range pdms {
 			_ = proc.ConsumeMetrics(ctx, pdm)
@@ -421,7 +477,7 @@ func metricSlice(numMetrics int) []pdata.Metrics {
 }
 
 func pdm(prefix string, size int) pdata.Metrics {
-	c := goldendataset.MetricsCfg{
+	c := goldendataset.MetricCfg{
 		MetricDescriptorType: pdata.MetricDataTypeIntGauge,
 		MetricNamePrefix:     prefix,
 		NumILMPerResource:    size,
@@ -434,30 +490,56 @@ func pdm(prefix string, size int) pdata.Metrics {
 	return goldendataset.MetricsFromCfg(c)
 }
 
+func TestMetricIndexSingle(t *testing.T) {
+	metrics := pdm("", 1)
+	idx := newMetricIndex()
+	idx.add(0, 0, 0)
+	extracted := idx.extract(metrics)
+	require.Equal(t, metrics, extracted)
+}
+
+func TestMetricIndexAll(t *testing.T) {
+	metrics := pdm("", 2)
+	idx := newMetricIndex()
+	idx.add(0, 0, 0)
+	idx.add(0, 0, 1)
+	idx.add(0, 1, 0)
+	idx.add(0, 1, 1)
+	idx.add(1, 0, 0)
+	idx.add(1, 0, 1)
+	idx.add(1, 1, 0)
+	idx.add(1, 1, 1)
+	extracted := idx.extract(metrics)
+	require.Equal(t, metrics, extracted)
+}
+
 func TestNilResourceMetrics(t *testing.T) {
 	metrics := pdata.NewMetrics()
 	rms := metrics.ResourceMetrics()
-	rms.AppendEmpty()
+	rms.Append(pdata.NewResourceMetrics())
 	requireNotPanics(t, metrics)
 }
 
 func TestNilILM(t *testing.T) {
 	metrics := pdata.NewMetrics()
 	rms := metrics.ResourceMetrics()
-	rm := rms.AppendEmpty()
+	rm := pdata.NewResourceMetrics()
+	rms.Append(rm)
 	ilms := rm.InstrumentationLibraryMetrics()
-	ilms.AppendEmpty()
+	ilms.Append(pdata.NewInstrumentationLibraryMetrics())
 	requireNotPanics(t, metrics)
 }
 
 func TestNilMetric(t *testing.T) {
 	metrics := pdata.NewMetrics()
 	rms := metrics.ResourceMetrics()
-	rm := rms.AppendEmpty()
+	rm := pdata.NewResourceMetrics()
+	rms.Append(rm)
 	ilms := rm.InstrumentationLibraryMetrics()
-	ilm := ilms.AppendEmpty()
+	ilm := pdata.NewInstrumentationLibraryMetrics()
+	ilms.Append(ilm)
 	ms := ilm.Metrics()
-	ms.AppendEmpty()
+	ms.Append(pdata.NewMetric())
 	requireNotPanics(t, metrics)
 }
 
@@ -474,9 +556,11 @@ func requireNotPanics(t *testing.T, metrics pdata.Metrics) {
 	ctx := context.Background()
 	proc, _ := factory.CreateMetricsProcessor(
 		ctx,
-		componenttest.NewNopProcessorCreateSettings(),
+		component.ProcessorCreateParams{
+			Logger: zap.NewNop(),
+		},
 		cfg,
-		consumertest.NewNop(),
+		consumertest.NewMetricsNop(),
 	)
 	require.NotPanics(t, func() {
 		_ = proc.ConsumeMetrics(ctx, metrics)

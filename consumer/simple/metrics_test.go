@@ -271,7 +271,7 @@ func TestMetrics(t *testing.T) {
 		AddDSumDataPoint("disk.time_awake", 100.6)
 
 	intHisto := pdata.NewIntHistogramDataPoint()
-	doubleHisto := pdata.NewHistogramDataPoint()
+	doubleHisto := pdata.NewDoubleHistogramDataPoint()
 
 	mb.WithLabels(map[string]string{
 		"partition": "1",
@@ -292,11 +292,13 @@ func TestMetrics(t *testing.T) {
 func TestMetricFactories(t *testing.T) {
 	mb := Metrics{
 		Metrics: pdata.NewMetrics(),
-		MetricFactoriesByName: map[string]func(pdata.Metric){
-			"disk.ops": func(m pdata.Metric) {
+		MetricFactoriesByName: map[string]func() pdata.Metric{
+			"disk.ops": func() pdata.Metric {
+				m := pdata.NewMetric()
 				m.SetName("disk.ops")
 				m.SetDescription("This counts disk operations")
 				m.SetDataType(pdata.MetricDataTypeIntSum)
+				return m
 			},
 		},
 		InstrumentationLibraryName:    "example",
@@ -416,7 +418,7 @@ func TestSafeMetrics(t *testing.T) {
 				AddDSumDataPoint("disk.time_awake"+idx, 100.6)
 
 			intHisto := pdata.NewIntHistogramDataPoint()
-			doubleHisto := pdata.NewHistogramDataPoint()
+			doubleHisto := pdata.NewDoubleHistogramDataPoint()
 
 			for j := 0; j < 5; j++ {
 				mb.WithLabels(map[string]string{
@@ -482,13 +484,16 @@ func BenchmarkPdataMetrics(b *testing.B) {
 		resAttrs.Insert("host", pdata.NewAttributeValueString("my-host"))
 		resAttrs.Insert("serviceName", pdata.NewAttributeValueString("app"))
 
-		ilm := rm.InstrumentationLibraryMetrics().AppendEmpty()
+		ilms := rm.InstrumentationLibraryMetrics()
+		ilms.Resize(1)
+		ilm := ilms.At(0)
+		metrics := ilm.Metrics()
+		metrics.Resize(6)
+
 		il := ilm.InstrumentationLibrary()
 		il.SetName("example")
 		il.SetVersion("0.1")
 
-		metrics := ilm.Metrics()
-		metrics.Resize(6)
 		for i := 0; i < 50; i++ {
 			metric := metrics.At(0)
 			metric.SetName("gauge" + strconv.Itoa(i))
@@ -499,6 +504,7 @@ func BenchmarkPdataMetrics(b *testing.B) {
 			{
 				dp := dps.At(0)
 				labels := dp.LabelsMap()
+				labels.InitEmptyWithCapacity(3)
 				labels.Insert("env", "prod")
 				labels.Insert("app", "myapp")
 				labels.Insert("version", "1.0")
@@ -508,6 +514,7 @@ func BenchmarkPdataMetrics(b *testing.B) {
 			{
 				dp := dps.At(1)
 				labels := dp.LabelsMap()
+				labels.InitEmptyWithCapacity(3)
 				labels.Insert("env", "prod")
 				labels.Insert("app", "myapp")
 				labels.Insert("version", "1.0")

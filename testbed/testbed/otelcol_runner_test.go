@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/service/defaultcomponents"
 )
@@ -58,12 +57,9 @@ service:
 	defer configCleanup()
 	assert.NoError(t, cfgErr)
 	assert.NotNil(t, configCleanup)
-	assert.NotEmpty(t, runner.configStr)
+	assert.NotNil(t, runner.config)
 	args := StartParams{}
-	defer func() {
-		_, err := runner.Stop()
-		require.NoError(t, err)
-	}()
+	defer runner.Stop()
 	assert.NoError(t, runner.Start(args))
 	assert.NotNil(t, runner.svc)
 }

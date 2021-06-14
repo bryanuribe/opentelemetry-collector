@@ -17,11 +17,14 @@ package prometheusreceiver
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	_ "github.com/prometheus/prometheus/discovery/install" // init() of this package registers service discovery impl.
+	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 )
@@ -29,32 +32,76 @@ import (
 // This file implements config for Prometheus receiver.
 
 const (
+	// The value of "type" key in configuration.
 	typeStr = "prometheus"
+
+	// The key for Prometheus scraping configs.
+	prometheusConfigKey = "config"
 )
 
 var (
 	errNilScrapeConfig = errors.New("expecting a non-nil ScrapeConfig")
 )
 
-// NewFactory creates a new Prometheus receiver factory.
 func NewFactory() component.ReceiverFactory {
 	return receiverhelper.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		receiverhelper.WithMetrics(createMetricsReceiver))
+		receiverhelper.WithMetrics(createMetricsReceiver),
+		receiverhelper.WithCustomUnmarshaler(customUnmarshaler))
 }
 
-func createDefaultConfig() config.Receiver {
+func customUnmarshaler(componentViperSection *viper.Viper, intoCfg interface{}) error {
+	if componentViperSection == nil {
+		return nil
+	}
+	// We need custom unmarshaling because prometheus "config" subkey defines its own
+	// YAML unmarshaling routines so we need to do it explicitly.
+
+	err := componentViperSection.UnmarshalExact(intoCfg)
+	if err != nil {
+		return fmt.Errorf("prometheus receiver failed to parse config: %s", err)
+	}
+
+	// Unmarshal prometheus's config values. Since prometheus uses `yaml` tags, so use `yaml`.
+	if !componentViperSection.IsSet(prometheusConfigKey) {
+		return nil
+	}
+	promCfgMap := componentViperSection.Sub(prometheusConfigKey).AllSettings()
+	out, err := yaml.Marshal(promCfgMap)
+	if err != nil {
+		return fmt.Errorf("prometheus receiver failed to marshal config to yaml: %s", err)
+	}
+	config := intoCfg.(*Config)
+
+	err = yaml.UnmarshalStrict(out, &config.PrometheusConfig)
+	if err != nil {
+		return fmt.Errorf("prometheus receiver failed to unmarshal yaml to prometheus config: %s", err)
+	}
+	if len(config.PrometheusConfig.ScrapeConfigs) == 0 {
+		return errNilScrapeConfig
+	}
+	return nil
+}
+
+func createDefaultConfig() configmodels.Receiver {
 	return &Config{
-		ReceiverSettings: config.NewReceiverSettings(config.NewID(typeStr)),
+		ReceiverSettings: configmodels.ReceiverSettings{
+			TypeVal: typeStr,
+			NameVal: typeStr,
+		},
 	}
 }
 
 func createMetricsReceiver(
 	_ context.Context,
-	set component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	params component.ReceiverCreateParams,
+	cfg configmodels.Receiver,
 	nextConsumer consumer.Metrics,
 ) (component.MetricsReceiver, error) {
-	return newPrometheusReceiver(set.Logger, cfg.(*Config), nextConsumer), nil
+	config := cfg.(*Config)
+	if config.PrometheusConfig == nil || len(config.PrometheusConfig.ScrapeConfigs) == 0 {
+		return nil, errNilScrapeConfig
+	}
+	return newPrometheusReceiver(params.Logger, config, nextConsumer), nil
 }

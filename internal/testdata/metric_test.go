@@ -26,55 +26,60 @@ import (
 
 type traceMetricsCase struct {
 	name string
-	md   pdata.Metrics
+	td   pdata.Metrics
 	otlp *otlpcollectormetrics.ExportMetricsServiceRequest
 }
 
 func generateAllMetricsTestCases() []traceMetricsCase {
 	return []traceMetricsCase{
 		{
+			name: "empty",
+			td:   GenerateMetricsEmpty(),
+			otlp: generateMetricsOtlpEmpty(),
+		},
+		{
 			name: "one-empty-resource-metrics",
-			md:   GenerateMetricsOneEmptyResourceMetrics(),
+			td:   GenerateMetricsOneEmptyResourceMetrics(),
 			otlp: generateMetricsOtlpOneEmptyResourceMetrics(),
 		},
 		{
 			name: "no-libraries",
-			md:   GenerateMetricsNoLibraries(),
+			td:   GenerateMetricsNoLibraries(),
 			otlp: generateMetricsOtlpNoLibraries(),
 		},
 		{
 			name: "one-empty-instrumentation-library",
-			md:   GenerateMetricsOneEmptyInstrumentationLibrary(),
+			td:   GenerateMetricsOneEmptyInstrumentationLibrary(),
 			otlp: generateMetricsOtlpOneEmptyInstrumentationLibrary(),
 		},
 		{
 			name: "one-metric-no-resource",
-			md:   GenerateMetricsOneMetricNoResource(),
+			td:   GenerateMetricsOneMetricNoResource(),
 			otlp: generateMetricsOtlpOneMetricNoResource(),
 		},
 		{
 			name: "one-metric",
-			md:   GenerateMetricsOneMetric(),
+			td:   GenerateMetricsOneMetric(),
 			otlp: generateMetricsOtlpOneMetric(),
 		},
 		{
 			name: "two-metrics",
-			md:   GenerateMetricsTwoMetrics(),
+			td:   GenerateMetricsTwoMetrics(),
 			otlp: generateMetricsOtlpTwoMetrics(),
 		},
 		{
 			name: "one-metric-no-labels",
-			md:   GenerateMetricsOneMetricNoLabels(),
+			td:   GenerateMetricsOneMetricNoLabels(),
 			otlp: generateMetricsOtlpOneMetricNoLabels(),
 		},
 		{
 			name: "all-types-no-data-points",
-			md:   GenerateMetricsAllTypesNoDataPoints(),
+			td:   GenerateMetricsAllTypesNoDataPoints(),
 			otlp: generateMetricsOtlpAllTypesNoDataPoints(),
 		},
 		{
 			name: "all-metric-types",
-			md:   GeneratMetricsAllTypesWithSampleDatapoints(),
+			td:   GeneratMetricsAllTypesWithSampleDatapoints(),
 			otlp: generateMetricsOtlpAllTypesWithSampleDatapoints(),
 		},
 	}
@@ -87,7 +92,7 @@ func TestToFromOtlpMetrics(t *testing.T) {
 		test := allTestCases[i]
 		t.Run(test.name, func(t *testing.T) {
 			td := pdata.MetricsFromInternalRep(internal.MetricsFromOtlp(test.otlp))
-			assert.EqualValues(t, test.md, td)
+			assert.EqualValues(t, test.td, td)
 			otlp := internal.MetricsToOtlp(td.InternalRep())
 			assert.EqualValues(t, test.otlp, otlp)
 		})

@@ -23,13 +23,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/config/configauth"
 	"go.opentelemetry.io/collector/config/configgrpc"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
-	"go.opentelemetry.io/collector/extension/bearertokenauthextension"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -38,23 +36,21 @@ func TestLoadConfig(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Exporters[typeStr] = factory
-
-	authFactory := bearertokenauthextension.NewFactory()
-	authType := authFactory.Type()
-	factories.Extensions[authType] = authFactory
-
-	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
+	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
 
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
-	e0 := cfg.Exporters[config.NewID(typeStr)]
+	e0 := cfg.Exporters["otlp"]
 	assert.Equal(t, e0, factory.CreateDefaultConfig())
 
-	e1 := cfg.Exporters[config.NewIDWithName(typeStr, "2")]
+	e1 := cfg.Exporters["otlp/2"]
 	assert.Equal(t, e1,
 		&Config{
-			ExporterSettings: config.NewExporterSettings(config.NewIDWithName(typeStr, "2")),
+			ExporterSettings: configmodels.ExporterSettings{
+				NameVal: "otlp/2",
+				TypeVal: "otlp",
+			},
 			TimeoutSettings: exporterhelper.TimeoutSettings{
 				Timeout: 10 * time.Second,
 			},
@@ -89,8 +85,11 @@ func TestLoadConfig(t *testing.T) {
 					Timeout:             30 * time.Second,
 				},
 				WriteBufferSize: 512 * 1024,
-				BalancerName:    "round_robin",
-				Auth:            &configauth.Authentication{AuthenticatorName: string(authType)},
+				PerRPCAuth: &configgrpc.PerRPCAuthConfig{
+					AuthType:    "bearer",
+					BearerToken: "some-token",
+				},
+				BalancerName: "round_robin",
 			},
 		})
 }

@@ -19,9 +19,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/internal"
 	otlpcollectortrace "go.opentelemetry.io/collector/internal/data/protogen/collector/trace/v1"
+
+	"go.opentelemetry.io/collector/consumer/pdata"
 )
 
 type traceTestCase struct {
@@ -33,39 +34,44 @@ type traceTestCase struct {
 func generateAllTraceTestCases() []traceTestCase {
 	return []traceTestCase{
 		{
+			name: "empty",
+			td:   GenerateTraceDataEmpty(),
+			otlp: generateTraceOtlpEmpty(),
+		},
+		{
 			name: "one-empty-resource-spans",
-			td:   GenerateTracesOneEmptyResourceSpans(),
-			otlp: generateTracesOtlpOneEmptyResourceSpans(),
+			td:   GenerateTraceDataOneEmptyResourceSpans(),
+			otlp: generateTraceOtlpOneEmptyResourceSpans(),
 		},
 		{
 			name: "no-libraries",
-			td:   GenerateTracesNoLibraries(),
-			otlp: generateTracesOtlpNoLibraries(),
+			td:   GenerateTraceDataNoLibraries(),
+			otlp: generateTraceOtlpNoLibraries(),
 		},
 		{
 			name: "one-empty-instrumentation-library",
-			td:   GenerateTracesOneEmptyInstrumentationLibrary(),
-			otlp: generateTracesOtlpOneEmptyInstrumentationLibrary(),
+			td:   GenerateTraceDataOneEmptyInstrumentationLibrary(),
+			otlp: generateTraceOtlpOneEmptyInstrumentationLibrary(),
 		},
 		{
 			name: "one-span-no-resource",
-			td:   GenerateTracesOneSpanNoResource(),
-			otlp: generateTracesOtlpOneSpanNoResource(),
+			td:   GenerateTraceDataOneSpanNoResource(),
+			otlp: generateTraceOtlpOneSpanNoResource(),
 		},
 		{
 			name: "one-span",
-			td:   GenerateTracesOneSpan(),
-			otlp: generateTracesOtlpOneSpan(),
+			td:   GenerateTraceDataOneSpan(),
+			otlp: generateTraceOtlpOneSpan(),
 		},
 		{
 			name: "two-spans-same-resource",
-			td:   GenerateTracesTwoSpansSameResource(),
-			otlp: generateTracesOtlpSameResourceTwoSpans(),
+			td:   GenerateTraceDataTwoSpansSameResource(),
+			otlp: generateTraceOtlpSameResourceTwoSpans(),
 		},
 		{
 			name: "two-spans-same-resource-one-different",
-			td:   GenerateTracesTwoSpansSameResourceOneDifferent(),
-			otlp: generateTracesOtlpTwoSpansSameResourceOneDifferent(),
+			td:   GenerateTraceDataTwoSpansSameResourceOneDifferent(),
+			otlp: generateTraceOtlpTwoSpansSameResourceOneDifferent(),
 		},
 	}
 }

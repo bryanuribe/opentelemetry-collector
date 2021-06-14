@@ -33,39 +33,44 @@ type logTestCase struct {
 func generateAllLogTestCases() []logTestCase {
 	return []logTestCase{
 		{
+			name: "empty",
+			ld:   GenerateLogDataEmpty(),
+			otlp: generateLogOtlpEmpty(),
+		},
+		{
 			name: "one-empty-resource-logs",
-			ld:   GenerateLogsOneEmptyResourceLogs(),
-			otlp: generateLogsOtlpOneEmptyResourceLogs(),
+			ld:   GenerateLogDataOneEmptyResourceLogs(),
+			otlp: generateLogOtlpOneEmptyResourceLogs(),
 		},
 		{
 			name: "no-log-records",
-			ld:   GenerateLogsNoLogRecords(),
+			ld:   GenerateLogDataNoLogRecords(),
 			otlp: generateLogOtlpNoLogRecords(),
 		},
 		{
 			name: "one-empty-log-record",
-			ld:   GenerateLogsOneEmptyLogRecord(),
-			otlp: generateLogsOtlpOneEmptyLogRecord(),
+			ld:   GenerateLogDataOneEmptyLogs(),
+			otlp: generateLogOtlpOneEmptyLogs(),
 		},
 		{
 			name: "one-log-record-no-resource",
-			ld:   GenerateLogsOneLogRecordNoResource(),
-			otlp: generateLogsOtlpOneLogRecordNoResource(),
+			ld:   GenerateLogDataOneLogNoResource(),
+			otlp: generateLogOtlpOneLogNoResource(),
 		},
 		{
 			name: "one-log-record",
-			ld:   GenerateLogsOneLogRecord(),
-			otlp: generateLogsOtlpOneLogRecord(),
+			ld:   GenerateLogDataOneLog(),
+			otlp: generateLogOtlpOneLog(),
 		},
 		{
 			name: "two-records-same-resource",
-			ld:   GenerateLogsTwoLogRecordsSameResource(),
-			otlp: generateLogsOtlpTwoLogRecordsSameResource(),
+			ld:   GenerateLogDataTwoLogsSameResource(),
+			otlp: generateLogOtlpSameResourceTwoLogs(),
 		},
 		{
 			name: "two-records-same-resource-one-different",
-			ld:   GenerateLogsTwoLogRecordsSameResourceOneDifferent(),
-			otlp: generateLogsOtlpTwoLogRecordsSameResourceOneDifferent(),
+			ld:   GenerateLogDataTwoLogsSameResourceOneDifferent(),
+			otlp: generateLogOtlpTwoLogsSameResourceOneDifferent(),
 		},
 	}
 }

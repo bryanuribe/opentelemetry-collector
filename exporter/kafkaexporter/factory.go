@@ -19,8 +19,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
@@ -28,7 +27,6 @@ const (
 	typeStr             = "kafka"
 	defaultTracesTopic  = "otlp_spans"
 	defaultMetricsTopic = "otlp_metrics"
-	defaultLogsTopic    = "otlp_logs"
 	defaultEncoding     = "otlp_proto"
 	defaultBroker       = "localhost:9092"
 	// default from sarama.NewConfig()
@@ -42,11 +40,11 @@ const (
 // FactoryOption applies changes to kafkaExporterFactory.
 type FactoryOption func(factory *kafkaExporterFactory)
 
-// WithTracesMarshalers adds tracesMarshalers.
-func WithTracesMarshalers(tracesMarshalers ...TracesMarshaler) FactoryOption {
+// WithAddTracesMarshallers adds tracesMarshallers.
+func WithAddTracesMarshallers(encodingMarshaller map[string]TracesMarshaller) FactoryOption {
 	return func(factory *kafkaExporterFactory) {
-		for _, marshaler := range tracesMarshalers {
-			factory.tracesMarshalers[marshaler.Encoding()] = marshaler
+		for encoding, marshaller := range encodingMarshaller {
+			factory.tracesMarshallers[encoding] = marshaller
 		}
 	}
 }
@@ -54,9 +52,8 @@ func WithTracesMarshalers(tracesMarshalers ...TracesMarshaler) FactoryOption {
 // NewFactory creates Kafka exporter factory.
 func NewFactory(options ...FactoryOption) component.ExporterFactory {
 	f := &kafkaExporterFactory{
-		tracesMarshalers:  tracesMarshalers(),
-		metricsMarshalers: metricsMarshalers(),
-		logsMarshalers:    logsMarshalers(),
+		tracesMarshallers:  tracesMarshallers(),
+		metricsMarshallers: metricsMarshallers(),
 	}
 	for _, o := range options {
 		o(f)
@@ -64,19 +61,20 @@ func NewFactory(options ...FactoryOption) component.ExporterFactory {
 	return exporterhelper.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		exporterhelper.WithTraces(f.createTracesExporter),
-		exporterhelper.WithMetrics(f.createMetricsExporter),
-		exporterhelper.WithLogs(f.createLogsExporter),
-	)
+		exporterhelper.WithTraces(f.createTraceExporter),
+		exporterhelper.WithMetrics(f.createMetricsExporter))
 }
 
-func createDefaultConfig() config.Exporter {
+func createDefaultConfig() configmodels.Exporter {
 	return &Config{
-		ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
-		TimeoutSettings:  exporterhelper.DefaultTimeoutSettings(),
-		RetrySettings:    exporterhelper.DefaultRetrySettings(),
-		QueueSettings:    exporterhelper.DefaultQueueSettings(),
-		Brokers:          []string{defaultBroker},
+		ExporterSettings: configmodels.ExporterSettings{
+			TypeVal: typeStr,
+			NameVal: typeStr,
+		},
+		TimeoutSettings: exporterhelper.DefaultTimeoutSettings(),
+		RetrySettings:   exporterhelper.DefaultRetrySettings(),
+		QueueSettings:   exporterhelper.DefaultQueueSettings(),
+		Brokers:         []string{defaultBroker},
 		// using an empty topic to track when it has not been set by user, default is based on traces or metrics.
 		Topic:    "",
 		Encoding: defaultEncoding,
@@ -91,29 +89,27 @@ func createDefaultConfig() config.Exporter {
 }
 
 type kafkaExporterFactory struct {
-	tracesMarshalers  map[string]TracesMarshaler
-	metricsMarshalers map[string]MetricsMarshaler
-	logsMarshalers    map[string]LogsMarshaler
+	tracesMarshallers  map[string]TracesMarshaller
+	metricsMarshallers map[string]MetricsMarshaller
 }
 
-func (f *kafkaExporterFactory) createTracesExporter(
+func (f *kafkaExporterFactory) createTraceExporter(
 	_ context.Context,
-	set component.ExporterCreateSettings,
-	cfg config.Exporter,
+	params component.ExporterCreateParams,
+	cfg configmodels.Exporter,
 ) (component.TracesExporter, error) {
 	oCfg := cfg.(*Config)
 	if oCfg.Topic == "" {
 		oCfg.Topic = defaultTracesTopic
 	}
-	exp, err := newTracesExporter(*oCfg, set, f.tracesMarshalers)
+	exp, err := newTracesExporter(*oCfg, params, f.tracesMarshallers)
 	if err != nil {
 		return nil, err
 	}
-	return exporterhelper.NewTracesExporter(
+	return exporterhelper.NewTraceExporter(
 		cfg,
-		set.Logger,
-		exp.tracesPusher,
-		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
+		params.Logger,
+		exp.traceDataPusher,
 		// Disable exporterhelper Timeout, because we cannot pass a Context to the Producer,
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutSettings{Timeout: 0}),
@@ -124,48 +120,21 @@ func (f *kafkaExporterFactory) createTracesExporter(
 
 func (f *kafkaExporterFactory) createMetricsExporter(
 	_ context.Context,
-	set component.ExporterCreateSettings,
-	cfg config.Exporter,
+	params component.ExporterCreateParams,
+	cfg configmodels.Exporter,
 ) (component.MetricsExporter, error) {
 	oCfg := cfg.(*Config)
 	if oCfg.Topic == "" {
 		oCfg.Topic = defaultMetricsTopic
 	}
-	exp, err := newMetricsExporter(*oCfg, set, f.metricsMarshalers)
+	exp, err := newMetricsExporter(*oCfg, params, f.metricsMarshallers)
 	if err != nil {
 		return nil, err
 	}
 	return exporterhelper.NewMetricsExporter(
 		cfg,
-		set.Logger,
+		params.Logger,
 		exp.metricsDataPusher,
-		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
-		// Disable exporterhelper Timeout, because we cannot pass a Context to the Producer,
-		// and will rely on the sarama Producer Timeout logic.
-		exporterhelper.WithTimeout(exporterhelper.TimeoutSettings{Timeout: 0}),
-		exporterhelper.WithRetry(oCfg.RetrySettings),
-		exporterhelper.WithQueue(oCfg.QueueSettings),
-		exporterhelper.WithShutdown(exp.Close))
-}
-
-func (f *kafkaExporterFactory) createLogsExporter(
-	_ context.Context,
-	set component.ExporterCreateSettings,
-	cfg config.Exporter,
-) (component.LogsExporter, error) {
-	oCfg := cfg.(*Config)
-	if oCfg.Topic == "" {
-		oCfg.Topic = defaultLogsTopic
-	}
-	exp, err := newLogsExporter(*oCfg, set, f.logsMarshalers)
-	if err != nil {
-		return nil, err
-	}
-	return exporterhelper.NewLogsExporter(
-		cfg,
-		set.Logger,
-		exp.logsDataPusher,
-		exporterhelper.WithCapabilities(consumer.Capabilities{MutatesData: false}),
 		// Disable exporterhelper Timeout, because we cannot pass a Context to the Producer,
 		// and will rely on the sarama Producer Timeout logic.
 		exporterhelper.WithTimeout(exporterhelper.TimeoutSettings{Timeout: 0}),

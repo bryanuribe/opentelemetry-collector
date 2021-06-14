@@ -28,37 +28,43 @@ import (
 )
 
 func TestDefaultSettings(t *testing.T) {
-	cp := componenthelper.New()
+	st := componenthelper.DefaultComponentSettings()
+	require.NotNil(t, st)
+	cp := componenthelper.NewComponent(st)
 	require.NoError(t, cp.Start(context.Background(), componenttest.NewNopHost()))
 	require.NoError(t, cp.Shutdown(context.Background()))
 }
 
 func TestWithStart(t *testing.T) {
 	startCalled := false
-	start := func(context.Context, component.Host) error { startCalled = true; return nil }
-	cp := componenthelper.New(componenthelper.WithStart(start))
+	st := componenthelper.DefaultComponentSettings()
+	st.Start = func(context.Context, component.Host) error { startCalled = true; return nil }
+	cp := componenthelper.NewComponent(st)
 	assert.NoError(t, cp.Start(context.Background(), componenttest.NewNopHost()))
 	assert.True(t, startCalled)
 }
 
 func TestWithStart_ReturnError(t *testing.T) {
 	want := errors.New("my_error")
-	start := func(context.Context, component.Host) error { return want }
-	cp := componenthelper.New(componenthelper.WithStart(start))
+	st := componenthelper.DefaultComponentSettings()
+	st.Start = func(context.Context, component.Host) error { return want }
+	cp := componenthelper.NewComponent(st)
 	assert.Equal(t, want, cp.Start(context.Background(), componenttest.NewNopHost()))
 }
 
 func TestWithShutdown(t *testing.T) {
 	shutdownCalled := false
-	shutdown := func(context.Context) error { shutdownCalled = true; return nil }
-	cp := componenthelper.New(componenthelper.WithShutdown(shutdown))
+	st := componenthelper.DefaultComponentSettings()
+	st.Shutdown = func(context.Context) error { shutdownCalled = true; return nil }
+	cp := componenthelper.NewComponent(st)
 	assert.NoError(t, cp.Shutdown(context.Background()))
 	assert.True(t, shutdownCalled)
 }
 
 func TestWithShutdown_ReturnError(t *testing.T) {
 	want := errors.New("my_error")
-	shutdown := func(context.Context) error { return want }
-	cp := componenthelper.New(componenthelper.WithShutdown(shutdown))
+	st := componenthelper.DefaultComponentSettings()
+	st.Shutdown = func(context.Context) error { return want }
+	cp := componenthelper.NewComponent(st)
 	assert.Equal(t, want, cp.Shutdown(context.Background()))
 }

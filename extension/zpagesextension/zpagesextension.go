@@ -16,6 +16,7 @@ package zpagesextension
 
 import (
 	"context"
+	"net"
 	"net/http"
 
 	"go.opencensus.io/zpages"
@@ -47,7 +48,7 @@ func (zpe *zpagesExtension) Start(_ context.Context, host component.Host) error 
 
 	// Start the listener here so we can have earlier failure if port is
 	// already in use.
-	ln, err := zpe.config.TCPAddr.Listen()
+	ln, err := net.Listen("tcp", zpe.config.Endpoint)
 	if err != nil {
 		return err
 	}

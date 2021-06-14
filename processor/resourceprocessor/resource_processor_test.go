@@ -21,19 +21,23 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/consumer/consumertest"
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/internal/testdata"
 	"go.opentelemetry.io/collector/processor/processorhelper"
 )
 
 var (
+	processorSettings = configmodels.ProcessorSettings{
+		TypeVal: "resource",
+		NameVal: "resource",
+	}
+
 	cfg = &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
+		ProcessorSettings: processorSettings,
 		AttributesActions: []processorhelper.ActionKeyValue{
-			{Key: "cloud.availability_zone", Value: "zone-1", Action: processorhelper.UPSERT},
+			{Key: "cloud.zone", Value: "zone-1", Action: processorhelper.UPSERT},
 			{Key: "k8s.cluster.name", FromAttribute: "k8s-cluster", Action: processorhelper.INSERT},
 			{Key: "redundant-attribute", Action: processorhelper.DELETE},
 		},
@@ -52,7 +56,7 @@ func TestResourceProcessorAttributesUpsert(t *testing.T) {
 			config:           cfg,
 			sourceAttributes: nil,
 			wantAttributes: map[string]string{
-				"cloud.availability_zone": "zone-1",
+				"cloud.zone": "zone-1",
 			},
 		},
 		{
@@ -60,27 +64,27 @@ func TestResourceProcessorAttributesUpsert(t *testing.T) {
 			config:           cfg,
 			sourceAttributes: map[string]string{},
 			wantAttributes: map[string]string{
-				"cloud.availability_zone": "zone-1",
+				"cloud.zone": "zone-1",
 			},
 		},
 		{
 			name:   "config_attributes_applied_on_existing_resource_attributes",
 			config: cfg,
 			sourceAttributes: map[string]string{
-				"cloud.availability_zone": "to-be-replaced",
-				"k8s-cluster":             "test-cluster",
-				"redundant-attribute":     "to-be-removed",
+				"cloud.zone":          "to-be-replaced",
+				"k8s-cluster":         "test-cluster",
+				"redundant-attribute": "to-be-removed",
 			},
 			wantAttributes: map[string]string{
-				"cloud.availability_zone": "zone-1",
-				"k8s-cluster":             "test-cluster",
-				"k8s.cluster.name":        "test-cluster",
+				"cloud.zone":       "zone-1",
+				"k8s-cluster":      "test-cluster",
+				"k8s.cluster.name": "test-cluster",
 			},
 		},
 		{
 			name: "config_attributes_replacement",
 			config: &Config{
-				ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
+				ProcessorSettings: processorSettings,
 				AttributesActions: []processorhelper.ActionKeyValue{
 					{Key: "k8s.cluster.name", FromAttribute: "k8s-cluster", Action: processorhelper.INSERT},
 					{Key: "k8s-cluster", Action: processorhelper.DELETE},
@@ -98,80 +102,74 @@ func TestResourceProcessorAttributesUpsert(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test trace consumer
-			ttn := new(consumertest.TracesSink)
+			ttn := &testTraceConsumer{}
 
 			factory := NewFactory()
-			rtp, err := factory.CreateTracesProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), tt.config, ttn)
+			rtp, err := factory.CreateTracesProcessor(context.Background(), component.ProcessorCreateParams{}, tt.config, ttn)
 			require.NoError(t, err)
-			assert.True(t, rtp.Capabilities().MutatesData)
+			assert.True(t, rtp.GetCapabilities().MutatesConsumedData)
 
 			sourceTraceData := generateTraceData(tt.sourceAttributes)
 			wantTraceData := generateTraceData(tt.wantAttributes)
 			err = rtp.ConsumeTraces(context.Background(), sourceTraceData)
 			require.NoError(t, err)
-			traces := ttn.AllTraces()
-			require.Len(t, traces, 1)
-			traces[0].ResourceSpans().At(0).Resource().Attributes().Sort()
-			assert.EqualValues(t, wantTraceData, traces[0])
+			assert.EqualValues(t, wantTraceData, ttn.td)
 
 			// Test metrics consumer
-			tmn := new(consumertest.MetricsSink)
-			rmp, err := factory.CreateMetricsProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), tt.config, tmn)
+			tmn := &testMetricsConsumer{}
+			rmp, err := factory.CreateMetricsProcessor(context.Background(), component.ProcessorCreateParams{}, tt.config, tmn)
 			require.NoError(t, err)
-			assert.True(t, rtp.Capabilities().MutatesData)
+			assert.True(t, rtp.GetCapabilities().MutatesConsumedData)
 
 			sourceMetricData := generateMetricData(tt.sourceAttributes)
 			wantMetricData := generateMetricData(tt.wantAttributes)
 			err = rmp.ConsumeMetrics(context.Background(), sourceMetricData)
 			require.NoError(t, err)
-			metrics := tmn.AllMetrics()
-			require.Len(t, metrics, 1)
-			metrics[0].ResourceMetrics().At(0).Resource().Attributes().Sort()
-			assert.EqualValues(t, wantMetricData, metrics[0])
+			assert.EqualValues(t, wantMetricData, tmn.md)
 
 			// Test logs consumer
-			tln := new(consumertest.LogsSink)
-			rlp, err := factory.CreateLogsProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), tt.config, tln)
+			tln := &testLogsConsumer{}
+			rlp, err := factory.CreateLogsProcessor(context.Background(), component.ProcessorCreateParams{}, tt.config, tln)
 			require.NoError(t, err)
-			assert.True(t, rtp.Capabilities().MutatesData)
+			assert.True(t, rtp.GetCapabilities().MutatesConsumedData)
 
 			sourceLogData := generateLogData(tt.sourceAttributes)
 			wantLogData := generateLogData(tt.wantAttributes)
 			err = rlp.ConsumeLogs(context.Background(), sourceLogData)
 			require.NoError(t, err)
-			logs := tln.AllLogs()
-			require.Len(t, logs, 1)
-			logs[0].ResourceLogs().At(0).Resource().Attributes().Sort()
-			assert.EqualValues(t, wantLogData, logs[0])
+			assert.EqualValues(t, wantLogData, tln.ld)
 		})
 	}
 }
 
 func TestResourceProcessorError(t *testing.T) {
+	ttn := &testTraceConsumer{}
+
 	badCfg := &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
+		ProcessorSettings: processorSettings,
 		AttributesActions: nil,
 	}
 
-	// Test traces consumer
 	factory := NewFactory()
-	rtp, err := factory.CreateTracesProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), badCfg, consumertest.NewNop())
+	rtp, err := factory.CreateTracesProcessor(context.Background(), component.ProcessorCreateParams{}, badCfg, ttn)
 	require.Error(t, err)
 	require.Nil(t, rtp)
 
 	// Test metrics consumer
-	rmp, err := factory.CreateMetricsProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), badCfg, consumertest.NewNop())
+	tmn := &testMetricsConsumer{}
+	rmp, err := factory.CreateMetricsProcessor(context.Background(), component.ProcessorCreateParams{}, badCfg, tmn)
 	require.Error(t, err)
 	require.Nil(t, rmp)
 
 	// Test logs consumer
-	rlp, err := factory.CreateLogsProcessor(context.Background(), componenttest.NewNopProcessorCreateSettings(), badCfg, consumertest.NewNop())
+	tln := &testLogsConsumer{}
+	rlp, err := factory.CreateLogsProcessor(context.Background(), component.ProcessorCreateParams{}, badCfg, tln)
 	require.Error(t, err)
 	require.Nil(t, rlp)
 }
 
 func generateTraceData(attributes map[string]string) pdata.Traces {
-	td := testdata.GenerateTracesOneSpanNoResource()
+	td := testdata.GenerateTraceDataOneSpanNoResource()
 	if attributes == nil {
 		return td
 	}
@@ -197,7 +195,7 @@ func generateMetricData(attributes map[string]string) pdata.Metrics {
 }
 
 func generateLogData(attributes map[string]string) pdata.Logs {
-	ld := testdata.GenerateLogsOneLogRecordNoResource()
+	ld := testdata.GenerateLogDataOneLogNoResource()
 	if attributes == nil {
 		return ld
 	}
@@ -207,4 +205,43 @@ func generateLogData(attributes map[string]string) pdata.Logs {
 	}
 	resource.Attributes().Sort()
 	return ld
+}
+
+type testTraceConsumer struct {
+	td pdata.Traces
+}
+
+func (ttn *testTraceConsumer) ConsumeTraces(_ context.Context, td pdata.Traces) error {
+	// sort attributes to be able to compare traces
+	for i := 0; i < td.ResourceSpans().Len(); i++ {
+		td.ResourceSpans().At(i).Resource().Attributes().Sort()
+	}
+	ttn.td = td
+	return nil
+}
+
+type testMetricsConsumer struct {
+	md pdata.Metrics
+}
+
+func (tmn *testMetricsConsumer) ConsumeMetrics(_ context.Context, md pdata.Metrics) error {
+	// sort attributes to be able to compare traces
+	for i := 0; i < md.ResourceMetrics().Len(); i++ {
+		md.ResourceMetrics().At(i).Resource().Attributes().Sort()
+	}
+	tmn.md = md
+	return nil
+}
+
+type testLogsConsumer struct {
+	ld pdata.Logs
+}
+
+func (tln *testLogsConsumer) ConsumeLogs(_ context.Context, ld pdata.Logs) error {
+	// sort attributes to be able to compare traces
+	for i := 0; i < ld.ResourceLogs().Len(); i++ {
+		ld.ResourceLogs().At(i).Resource().Attributes().Sort()
+	}
+	tln.ld = ld
+	return nil
 }

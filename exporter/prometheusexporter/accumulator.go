@@ -26,10 +26,10 @@ import (
 )
 
 type accumulatedValue struct {
-	// value contains a metric with exactly one aggregated datapoint.
+	// value contains a metric with exactly one aggregated datapoint
 	value pdata.Metric
-	// updated indicates when metric was last changed.
-	updated time.Time
+	// stored indicates when metric was stored
+	stored time.Time
 
 	instrumentationLibrary pdata.InstrumentationLibrary
 }
@@ -49,7 +49,7 @@ type lastValueAccumulator struct {
 	registeredMetrics sync.Map
 
 	// metricExpiration contains duration for which metric
-	// should be served after it was updated
+	// should be served after it was stored
 	metricExpiration time.Duration
 }
 
@@ -63,7 +63,6 @@ func newAccumulator(logger *zap.Logger, metricExpiration time.Duration) accumula
 
 // Accumulate stores one datapoint per metric
 func (a *lastValueAccumulator) Accumulate(rm pdata.ResourceMetrics) (n int) {
-	now := time.Now()
 	ilms := rm.InstrumentationLibraryMetrics()
 
 	for i := 0; i < ilms.Len(); i++ {
@@ -71,127 +70,97 @@ func (a *lastValueAccumulator) Accumulate(rm pdata.ResourceMetrics) (n int) {
 
 		metrics := ilm.Metrics()
 		for j := 0; j < metrics.Len(); j++ {
-			n += a.addMetric(metrics.At(j), ilm.InstrumentationLibrary(), now)
+			n += a.addMetric(metrics.At(j), ilm.InstrumentationLibrary())
 		}
 	}
 
 	return
 }
 
-func (a *lastValueAccumulator) addMetric(metric pdata.Metric, il pdata.InstrumentationLibrary, now time.Time) int {
+func (a *lastValueAccumulator) addMetric(metric pdata.Metric, il pdata.InstrumentationLibrary) int {
 	a.logger.Debug(fmt.Sprintf("accumulating metric: %s", metric.Name()))
 
 	switch metric.DataType() {
 	case pdata.MetricDataTypeIntGauge:
-		return a.accumulateIntGauge(metric, il, now)
+		return a.accumulateIntGauge(metric, il)
 	case pdata.MetricDataTypeIntSum:
-		return a.accumulateIntSum(metric, il, now)
+		return a.accumulateIntSum(metric, il)
 	case pdata.MetricDataTypeDoubleGauge:
-		return a.accumulateDoubleGauge(metric, il, now)
+		return a.accumulateDoubleGauge(metric, il)
 	case pdata.MetricDataTypeDoubleSum:
-		return a.accumulateDoubleSum(metric, il, now)
+		return a.accumulateDoubleSum(metric, il)
 	case pdata.MetricDataTypeIntHistogram:
-		return a.accumulateIntHistogram(metric, il, now)
-	case pdata.MetricDataTypeHistogram:
-		return a.accumulateDoubleHistogram(metric, il, now)
-	case pdata.MetricDataTypeSummary:
-		return a.accumulateSummary(metric, il, now)
-	default:
-		a.logger.With(
-			zap.String("data_type", string(metric.DataType())),
-			zap.String("metric_name", metric.Name()),
-		).Error("failed to translate metric")
+		return a.accumulateIntHistogram(metric, il)
+	case pdata.MetricDataTypeDoubleHistogram:
+		return a.accumulateDoubleHistogram(metric, il)
 	}
 
 	return 0
 }
 
-func (a *lastValueAccumulator) accumulateSummary(metric pdata.Metric, il pdata.InstrumentationLibrary, now time.Time) (n int) {
-	dps := metric.Summary().DataPoints()
-	for i := 0; i < dps.Len(); i++ {
-		ip := dps.At(i)
-
-		signature := timeseriesSignature(il.Name(), metric, ip.LabelsMap())
-
-		v, ok := a.registeredMetrics.Load(signature)
-		stalePoint := ok &&
-			ip.Timestamp().AsTime().Before(v.(*accumulatedValue).value.Summary().DataPoints().At(0).Timestamp().AsTime())
-
-		if stalePoint {
-			// Only keep this datapoint if it has a later timestamp.
-			continue
-		}
-
-		mm := createMetric(metric)
-		ip.CopyTo(mm.Summary().DataPoints().AppendEmpty())
-		a.registeredMetrics.Store(signature, &accumulatedValue{value: mm, instrumentationLibrary: il, updated: now})
-		n++
-	}
-
-	return n
-}
-
-func (a *lastValueAccumulator) accumulateIntGauge(metric pdata.Metric, il pdata.InstrumentationLibrary, now time.Time) (n int) {
+func (a *lastValueAccumulator) accumulateIntGauge(metric pdata.Metric, il pdata.InstrumentationLibrary) (n int) {
 	dps := metric.IntGauge().DataPoints()
 	for i := 0; i < dps.Len(); i++ {
 		ip := dps.At(i)
 
+		ts := ip.Timestamp().AsTime()
 		signature := timeseriesSignature(il.Name(), metric, ip.LabelsMap())
 
 		v, ok := a.registeredMetrics.Load(signature)
 		if !ok {
 			m := createMetric(metric)
-			ip.CopyTo(m.IntGauge().DataPoints().AppendEmpty())
-			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+			m.IntGauge().DataPoints().Append(ip)
+			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 			n++
 			continue
 		}
 		mv := v.(*accumulatedValue)
 
-		if ip.Timestamp().AsTime().Before(mv.value.IntGauge().DataPoints().At(0).Timestamp().AsTime()) {
+		if ts.Before(mv.value.IntGauge().DataPoints().At(0).Timestamp().AsTime()) {
 			// only keep datapoint with latest timestamp
 			continue
 		}
 
 		m := createMetric(metric)
-		ip.CopyTo(m.IntGauge().DataPoints().AppendEmpty())
-		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+		m.IntGauge().DataPoints().Append(ip)
+		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 		n++
 	}
 	return
 }
 
-func (a *lastValueAccumulator) accumulateDoubleGauge(metric pdata.Metric, il pdata.InstrumentationLibrary, now time.Time) (n int) {
+func (a *lastValueAccumulator) accumulateDoubleGauge(metric pdata.Metric, il pdata.InstrumentationLibrary) (n int) {
 	dps := metric.DoubleGauge().DataPoints()
 	for i := 0; i < dps.Len(); i++ {
 		ip := dps.At(i)
 
+		ts := ip.Timestamp().AsTime()
 		signature := timeseriesSignature(il.Name(), metric, ip.LabelsMap())
 
 		v, ok := a.registeredMetrics.Load(signature)
 		if !ok {
 			m := createMetric(metric)
-			ip.CopyTo(m.DoubleGauge().DataPoints().AppendEmpty())
-			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+			m.DoubleGauge().DataPoints().Append(ip)
+			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 			n++
 			continue
 		}
 		mv := v.(*accumulatedValue)
 
-		if ip.Timestamp().AsTime().Before(mv.value.DoubleGauge().DataPoints().At(0).Timestamp().AsTime()) {
+		if ts.Before(mv.value.DoubleGauge().DataPoints().At(0).Timestamp().AsTime()) {
 			// only keep datapoint with latest timestamp
 			continue
 		}
 
 		m := createMetric(metric)
-		ip.CopyTo(m.DoubleGauge().DataPoints().AppendEmpty())
-		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+		m.DoubleGauge().DataPoints().Append(ip)
+		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 		n++
 	}
 	return
 }
 
-func (a *lastValueAccumulator) accumulateIntSum(metric pdata.Metric, il pdata.InstrumentationLibrary, now time.Time) (n int) {
+func (a *lastValueAccumulator) accumulateIntSum(metric pdata.Metric, il pdata.InstrumentationLibrary) (n int) {
 	intSum := metric.IntSum()
 
 	// Drop metrics with non-cumulative aggregations
@@ -203,6 +172,7 @@ func (a *lastValueAccumulator) accumulateIntSum(metric pdata.Metric, il pdata.In
 	for i := 0; i < dps.Len(); i++ {
 		ip := dps.At(i)
 
+		ts := ip.Timestamp().AsTime()
 		signature := timeseriesSignature(il.Name(), metric, ip.LabelsMap())
 
 		v, ok := a.registeredMetrics.Load(signature)
@@ -210,14 +180,14 @@ func (a *lastValueAccumulator) accumulateIntSum(metric pdata.Metric, il pdata.In
 			m := createMetric(metric)
 			m.IntSum().SetIsMonotonic(metric.IntSum().IsMonotonic())
 			m.IntSum().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
-			ip.CopyTo(m.IntSum().DataPoints().AppendEmpty())
-			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+			m.IntSum().DataPoints().Append(ip)
+			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 			n++
 			continue
 		}
 		mv := v.(*accumulatedValue)
 
-		if ip.Timestamp().AsTime().Before(mv.value.IntSum().DataPoints().At(0).Timestamp().AsTime()) {
+		if ts.Before(mv.value.IntSum().DataPoints().At(0).Timestamp().AsTime()) {
 			// only keep datapoint with latest timestamp
 			continue
 		}
@@ -225,14 +195,14 @@ func (a *lastValueAccumulator) accumulateIntSum(metric pdata.Metric, il pdata.In
 		m := createMetric(metric)
 		m.IntSum().SetIsMonotonic(metric.IntSum().IsMonotonic())
 		m.IntSum().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
-		ip.CopyTo(m.IntSum().DataPoints().AppendEmpty())
-		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+		m.IntSum().DataPoints().Append(ip)
+		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 		n++
 	}
 	return
 }
 
-func (a *lastValueAccumulator) accumulateDoubleSum(metric pdata.Metric, il pdata.InstrumentationLibrary, now time.Time) (n int) {
+func (a *lastValueAccumulator) accumulateDoubleSum(metric pdata.Metric, il pdata.InstrumentationLibrary) (n int) {
 	doubleSum := metric.DoubleSum()
 
 	// Drop metrics with non-cumulative aggregations
@@ -244,6 +214,7 @@ func (a *lastValueAccumulator) accumulateDoubleSum(metric pdata.Metric, il pdata
 	for i := 0; i < dps.Len(); i++ {
 		ip := dps.At(i)
 
+		ts := ip.Timestamp().AsTime()
 		signature := timeseriesSignature(il.Name(), metric, ip.LabelsMap())
 
 		v, ok := a.registeredMetrics.Load(signature)
@@ -251,14 +222,14 @@ func (a *lastValueAccumulator) accumulateDoubleSum(metric pdata.Metric, il pdata
 			m := createMetric(metric)
 			m.DoubleSum().SetIsMonotonic(metric.DoubleSum().IsMonotonic())
 			m.DoubleSum().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
-			ip.CopyTo(m.DoubleSum().DataPoints().AppendEmpty())
-			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+			m.DoubleSum().DataPoints().Append(ip)
+			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 			n++
 			continue
 		}
 		mv := v.(*accumulatedValue)
 
-		if ip.Timestamp().AsTime().Before(mv.value.DoubleSum().DataPoints().At(0).Timestamp().AsTime()) {
+		if ts.Before(mv.value.DoubleSum().DataPoints().At(0).Timestamp().AsTime()) {
 			// only keep datapoint with latest timestamp
 			continue
 		}
@@ -266,14 +237,14 @@ func (a *lastValueAccumulator) accumulateDoubleSum(metric pdata.Metric, il pdata
 		m := createMetric(metric)
 		m.DoubleSum().SetIsMonotonic(metric.DoubleSum().IsMonotonic())
 		m.DoubleSum().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
-		ip.CopyTo(m.DoubleSum().DataPoints().AppendEmpty())
-		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+		m.DoubleSum().DataPoints().Append(ip)
+		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 		n++
 	}
 	return
 }
 
-func (a *lastValueAccumulator) accumulateIntHistogram(metric pdata.Metric, il pdata.InstrumentationLibrary, now time.Time) (n int) {
+func (a *lastValueAccumulator) accumulateIntHistogram(metric pdata.Metric, il pdata.InstrumentationLibrary) (n int) {
 	intHistogram := metric.IntHistogram()
 
 	// Drop metrics with non-cumulative aggregations
@@ -285,34 +256,35 @@ func (a *lastValueAccumulator) accumulateIntHistogram(metric pdata.Metric, il pd
 	for i := 0; i < dps.Len(); i++ {
 		ip := dps.At(i)
 
+		ts := ip.Timestamp().AsTime()
 		signature := timeseriesSignature(il.Name(), metric, ip.LabelsMap())
 
 		v, ok := a.registeredMetrics.Load(signature)
 		if !ok {
 			m := createMetric(metric)
-			ip.CopyTo(m.IntHistogram().DataPoints().AppendEmpty())
-			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+			m.IntHistogram().DataPoints().Append(ip)
+			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 			n++
 			continue
 		}
 		mv := v.(*accumulatedValue)
 
-		if ip.Timestamp().AsTime().Before(mv.value.IntHistogram().DataPoints().At(0).Timestamp().AsTime()) {
+		if ts.Before(mv.value.IntHistogram().DataPoints().At(0).Timestamp().AsTime()) {
 			// only keep datapoint with latest timestamp
 			continue
 		}
 
 		m := createMetric(metric)
-		ip.CopyTo(m.IntHistogram().DataPoints().AppendEmpty())
+		m.IntHistogram().DataPoints().Append(ip)
 		m.IntHistogram().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
-		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 		n++
 	}
 	return
 }
 
-func (a *lastValueAccumulator) accumulateDoubleHistogram(metric pdata.Metric, il pdata.InstrumentationLibrary, now time.Time) (n int) {
-	doubleHistogram := metric.Histogram()
+func (a *lastValueAccumulator) accumulateDoubleHistogram(metric pdata.Metric, il pdata.InstrumentationLibrary) (n int) {
+	doubleHistogram := metric.DoubleHistogram()
 
 	// Drop metrics with non-cumulative aggregations
 	if doubleHistogram.AggregationTemporality() != pdata.AggregationTemporalityCumulative {
@@ -323,27 +295,28 @@ func (a *lastValueAccumulator) accumulateDoubleHistogram(metric pdata.Metric, il
 	for i := 0; i < dps.Len(); i++ {
 		ip := dps.At(i)
 
+		ts := ip.Timestamp().AsTime()
 		signature := timeseriesSignature(il.Name(), metric, ip.LabelsMap())
 
 		v, ok := a.registeredMetrics.Load(signature)
 		if !ok {
 			m := createMetric(metric)
-			ip.CopyTo(m.Histogram().DataPoints().AppendEmpty())
-			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+			m.DoubleHistogram().DataPoints().Append(ip)
+			a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 			n++
 			continue
 		}
 		mv := v.(*accumulatedValue)
 
-		if ip.Timestamp().AsTime().Before(mv.value.Histogram().DataPoints().At(0).Timestamp().AsTime()) {
+		if ts.Before(mv.value.DoubleHistogram().DataPoints().At(0).Timestamp().AsTime()) {
 			// only keep datapoint with latest timestamp
 			continue
 		}
 
 		m := createMetric(metric)
-		ip.CopyTo(m.Histogram().DataPoints().AppendEmpty())
-		m.Histogram().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
-		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, updated: now})
+		m.DoubleHistogram().DataPoints().Append(ip)
+		m.DoubleHistogram().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
+		a.registeredMetrics.Store(signature, &accumulatedValue{value: m, instrumentationLibrary: il, stored: time.Now()})
 		n++
 	}
 	return
@@ -353,12 +326,11 @@ func (a *lastValueAccumulator) accumulateDoubleHistogram(metric pdata.Metric, il
 func (a *lastValueAccumulator) Collect() []pdata.Metric {
 	a.logger.Debug("Accumulator collect called")
 
-	var res []pdata.Metric
-	expirationTime := time.Now().Add(-a.metricExpiration)
+	res := make([]pdata.Metric, 0)
 
 	a.registeredMetrics.Range(func(key, value interface{}) bool {
 		v := value.(*accumulatedValue)
-		if expirationTime.After(v.updated) {
+		if time.Now().After(v.stored.Add(a.metricExpiration)) {
 			a.logger.Debug(fmt.Sprintf("metric expired: %s", v.value.Name()))
 			a.registeredMetrics.Delete(key)
 			return true
@@ -376,9 +348,8 @@ func timeseriesSignature(ilmName string, metric pdata.Metric, labels pdata.Strin
 	b.WriteString(metric.DataType().String())
 	b.WriteString("*" + ilmName)
 	b.WriteString("*" + metric.Name())
-	labels.Sort().Range(func(k string, v string) bool {
+	labels.ForEach(func(k string, v string) {
 		b.WriteString("*" + k + "*" + v)
-		return true
 	})
 	return b.String()
 }

@@ -17,19 +17,28 @@ package receiverhelper
 import (
 	"context"
 
+	"github.com/spf13/viper"
+
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenterror"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configerror"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer"
 )
 
 // FactoryOption apply changes to ReceiverOptions.
 type FactoryOption func(o *factory)
 
-// WithTraces overrides the default "error not supported" implementation for CreateTracesReceiver.
-func WithTraces(createTracesReceiver CreateTracesReceiver) FactoryOption {
+// WithCustomUnmarshaler implements component.ConfigUnmarshaler.
+func WithCustomUnmarshaler(customUnmarshaler component.CustomUnmarshaler) FactoryOption {
 	return func(o *factory) {
-		o.createTracesReceiver = createTracesReceiver
+		o.customUnmarshaler = customUnmarshaler
+	}
+}
+
+// WithTraces overrides the default "error not supported" implementation for CreateTraceReceiver.
+func WithTraces(createTraceReceiver CreateTraceReceiver) FactoryOption {
+	return func(o *factory) {
+		o.createTraceReceiver = createTraceReceiver
 	}
 }
 
@@ -48,28 +57,29 @@ func WithLogs(createLogsReceiver CreateLogsReceiver) FactoryOption {
 }
 
 // CreateDefaultConfig is the equivalent of component.ReceiverFactory.CreateDefaultConfig()
-type CreateDefaultConfig func() config.Receiver
+type CreateDefaultConfig func() configmodels.Receiver
 
-// CreateTracesReceiver is the equivalent of component.ReceiverFactory.CreateTracesReceiver()
-type CreateTracesReceiver func(context.Context, component.ReceiverCreateSettings, config.Receiver, consumer.Traces) (component.TracesReceiver, error)
+// CreateTraceReceiver is the equivalent of component.ReceiverFactory.CreateTracesReceiver()
+type CreateTraceReceiver func(context.Context, component.ReceiverCreateParams, configmodels.Receiver, consumer.Traces) (component.TracesReceiver, error)
 
 // CreateMetricsReceiver is the equivalent of component.ReceiverFactory.CreateMetricsReceiver()
-type CreateMetricsReceiver func(context.Context, component.ReceiverCreateSettings, config.Receiver, consumer.Metrics) (component.MetricsReceiver, error)
+type CreateMetricsReceiver func(context.Context, component.ReceiverCreateParams, configmodels.Receiver, consumer.Metrics) (component.MetricsReceiver, error)
 
 // CreateLogsReceiver is the equivalent of component.ReceiverFactory.CreateLogsReceiver()
-type CreateLogsReceiver func(context.Context, component.ReceiverCreateSettings, config.Receiver, consumer.Logs) (component.LogsReceiver, error)
+type CreateLogsReceiver func(context.Context, component.ReceiverCreateParams, configmodels.Receiver, consumer.Logs) (component.LogsReceiver, error)
 
 type factory struct {
-	cfgType               config.Type
+	cfgType               configmodels.Type
+	customUnmarshaler     component.CustomUnmarshaler
 	createDefaultConfig   CreateDefaultConfig
-	createTracesReceiver  CreateTracesReceiver
+	createTraceReceiver   CreateTraceReceiver
 	createMetricsReceiver CreateMetricsReceiver
 	createLogsReceiver    CreateLogsReceiver
 }
 
 // NewFactory returns a component.ReceiverFactory.
 func NewFactory(
-	cfgType config.Type,
+	cfgType configmodels.Type,
 	createDefaultConfig CreateDefaultConfig,
 	options ...FactoryOption) component.ReceiverFactory {
 	f := &factory{
@@ -79,52 +89,69 @@ func NewFactory(
 	for _, opt := range options {
 		opt(f)
 	}
-	return f
+	var ret component.ReceiverFactory
+	if f.customUnmarshaler != nil {
+		ret = &factoryWithUnmarshaler{f}
+	} else {
+		ret = f
+	}
+	return ret
 }
 
 // Type gets the type of the Receiver config created by this factory.
-func (f *factory) Type() config.Type {
+func (f *factory) Type() configmodels.Type {
 	return f.cfgType
 }
 
 // CreateDefaultConfig creates the default configuration for receiver.
-func (f *factory) CreateDefaultConfig() config.Receiver {
+func (f *factory) CreateDefaultConfig() configmodels.Receiver {
 	return f.createDefaultConfig()
 }
 
-// CreateTracesReceiver creates a component.TracesReceiver based on this config.
+// CreateTraceReceiver creates a component.TracesReceiver based on this config.
 func (f *factory) CreateTracesReceiver(
 	ctx context.Context,
-	set component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	params component.ReceiverCreateParams,
+	cfg configmodels.Receiver,
 	nextConsumer consumer.Traces) (component.TracesReceiver, error) {
-	if f.createTracesReceiver != nil {
-		return f.createTracesReceiver(ctx, set, cfg, nextConsumer)
+	if f.createTraceReceiver != nil {
+		return f.createTraceReceiver(ctx, params, cfg, nextConsumer)
 	}
-	return nil, componenterror.ErrDataTypeIsNotSupported
+	return nil, configerror.ErrDataTypeIsNotSupported
 }
 
 // CreateMetricsReceiver creates a component.MetricsReceiver based on this config.
 func (f *factory) CreateMetricsReceiver(
 	ctx context.Context,
-	set component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	params component.ReceiverCreateParams,
+	cfg configmodels.Receiver,
 	nextConsumer consumer.Metrics) (component.MetricsReceiver, error) {
 	if f.createMetricsReceiver != nil {
-		return f.createMetricsReceiver(ctx, set, cfg, nextConsumer)
+		return f.createMetricsReceiver(ctx, params, cfg, nextConsumer)
 	}
-	return nil, componenterror.ErrDataTypeIsNotSupported
+	return nil, configerror.ErrDataTypeIsNotSupported
 }
 
 // CreateLogsReceiver creates a metrics processor based on this config.
 func (f *factory) CreateLogsReceiver(
 	ctx context.Context,
-	set component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	params component.ReceiverCreateParams,
+	cfg configmodels.Receiver,
 	nextConsumer consumer.Logs,
 ) (component.LogsReceiver, error) {
 	if f.createLogsReceiver != nil {
-		return f.createLogsReceiver(ctx, set, cfg, nextConsumer)
+		return f.createLogsReceiver(ctx, params, cfg, nextConsumer)
 	}
-	return nil, componenterror.ErrDataTypeIsNotSupported
+	return nil, configerror.ErrDataTypeIsNotSupported
+}
+
+var _ component.ConfigUnmarshaler = (*factoryWithUnmarshaler)(nil)
+
+type factoryWithUnmarshaler struct {
+	*factory
+}
+
+// Unmarshal un-marshals the config using the provided custom unmarshaler.
+func (f *factoryWithUnmarshaler) Unmarshal(componentViperSection *viper.Viper, intoCfg interface{}) error {
+	return f.customUnmarshaler(componentViperSection, intoCfg)
 }

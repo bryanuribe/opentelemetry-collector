@@ -21,7 +21,6 @@ import (
 
 	tracepb "github.com/census-instrumentation/opencensus-proto/gen-go/trace/v1"
 
-	"go.opentelemetry.io/collector/translator/conventions"
 	tracetranslator "go.opentelemetry.io/collector/translator/trace"
 )
 
@@ -29,12 +28,6 @@ type status struct {
 	codePtr *int32
 	message string
 }
-
-const (
-	tagZipkinCensusCode    = "census.status_code"
-	tagZipkinCensusMsg     = "census.status_description"
-	tagZipkinOpenCensusMsg = "opencensus.status_description"
-)
 
 // statusMapper contains codes translated from different sources to OC status codes
 type statusMapper struct {
@@ -90,14 +83,14 @@ func (m *statusMapper) ocStatus() *tracepb.Status {
 
 func (m *statusMapper) fromAttribute(key string, attrib *tracepb.AttributeValue) bool {
 	switch key {
-	case tagZipkinCensusCode:
+	case tracetranslator.TagZipkinCensusCode:
 		code, err := attribToStatusCode(attrib)
 		if err == nil {
 			m.fromCensus.codePtr = &code
 		}
 		return true
 
-	case tagZipkinCensusMsg, tagZipkinOpenCensusMsg:
+	case tracetranslator.TagZipkinCensusMsg, tracetranslator.TagZipkinOpenCensusMsg:
 		m.fromCensus.message = attrib.GetStringValue().GetValue()
 		return true
 
@@ -112,10 +105,10 @@ func (m *statusMapper) fromAttribute(key string, attrib *tracepb.AttributeValue)
 		m.fromStatus.message = attrib.GetStringValue().GetValue()
 		return true
 
-	case conventions.AttributeHTTPStatusCode:
+	case tracetranslator.TagHTTPStatusCode:
 		httpCode, err := attribToStatusCode(attrib)
 		if err == nil {
-			code := ocStatusCodeFromHTTP(httpCode)
+			code := tracetranslator.OCStatusCodeFromHTTP(httpCode)
 			m.fromHTTP.codePtr = &code
 		}
 

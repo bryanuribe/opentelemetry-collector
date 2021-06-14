@@ -18,7 +18,7 @@ import (
 	"context"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
@@ -27,7 +27,7 @@ import (
 // ExampleReceiver is for testing purposes. We are defining an example config and factory
 // for "examplereceiver" receiver type.
 type ExampleReceiver struct {
-	config.ReceiverSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+	configmodels.ReceiverSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
 	// Configures the receiver server protocol.
 	confignet.TCPAddr `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
 
@@ -36,19 +36,22 @@ type ExampleReceiver struct {
 	ExtraListSetting []string          `mapstructure:"extra_list"`
 }
 
-var receiverType = config.Type("examplereceiver")
+const recvType = "examplereceiver"
 
 // ExampleReceiverFactory is factory for ExampleReceiver.
 var ExampleReceiverFactory = receiverhelper.NewFactory(
-	receiverType,
+	recvType,
 	createReceiverDefaultConfig,
 	receiverhelper.WithTraces(createTracesReceiver),
 	receiverhelper.WithMetrics(createMetricsReceiver),
 	receiverhelper.WithLogs(createLogsReceiver))
 
-func createReceiverDefaultConfig() config.Receiver {
+func createReceiverDefaultConfig() configmodels.Receiver {
 	return &ExampleReceiver{
-		ReceiverSettings: config.NewReceiverSettings(config.NewID(receiverType)),
+		ReceiverSettings: configmodels.ReceiverSettings{
+			TypeVal: recvType,
+			NameVal: recvType,
+		},
 		TCPAddr: confignet.TCPAddr{
 			Endpoint: "localhost:1000",
 		},
@@ -58,11 +61,11 @@ func createReceiverDefaultConfig() config.Receiver {
 	}
 }
 
-// CreateTracesReceiver creates a trace receiver based on this config.
+// CreateTraceReceiver creates a trace receiver based on this config.
 func createTracesReceiver(
 	_ context.Context,
-	_ component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	_ component.ReceiverCreateParams,
+	cfg configmodels.Receiver,
 	nextConsumer consumer.Traces,
 ) (component.TracesReceiver, error) {
 	receiver := createReceiver(cfg)
@@ -73,8 +76,8 @@ func createTracesReceiver(
 // CreateMetricsReceiver creates a metrics receiver based on this config.
 func createMetricsReceiver(
 	_ context.Context,
-	_ component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	_ component.ReceiverCreateParams,
+	cfg configmodels.Receiver,
 	nextConsumer consumer.Metrics,
 ) (component.MetricsReceiver, error) {
 	receiver := createReceiver(cfg)
@@ -84,8 +87,8 @@ func createMetricsReceiver(
 
 func createLogsReceiver(
 	_ context.Context,
-	_ component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	_ component.ReceiverCreateParams,
+	cfg configmodels.Receiver,
 	nextConsumer consumer.Logs,
 ) (component.LogsReceiver, error) {
 	receiver := createReceiver(cfg)
@@ -94,7 +97,7 @@ func createLogsReceiver(
 	return receiver, nil
 }
 
-func createReceiver(cfg config.Receiver) *ExampleReceiverProducer {
+func createReceiver(cfg configmodels.Receiver) *ExampleReceiverProducer {
 	// There must be one receiver for all data types. We maintain a map of
 	// receivers per config.
 
@@ -134,4 +137,4 @@ func (erp *ExampleReceiverProducer) Shutdown(context.Context) error {
 // We maintain this map because the ReceiverFactory is asked trace and metric receivers separately
 // when it gets CreateTracesReceiver() and CreateMetricsReceiver() but they must not
 // create separate objects, they must use one Receiver object per configuration.
-var exampleReceivers = map[config.Receiver]*ExampleReceiverProducer{}
+var exampleReceivers = map[configmodels.Receiver]*ExampleReceiverProducer{}

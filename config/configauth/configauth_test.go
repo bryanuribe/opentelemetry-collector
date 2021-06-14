@@ -18,54 +18,57 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"github.com/stretchr/testify/require"
 )
 
-func TestGetAuthenticator(t *testing.T) {
+func TestToServerOptions(t *testing.T) {
 	// prepare
-	cfg := &Authentication{
-		AuthenticatorName: "mock",
-	}
-	ext := map[config.ComponentID]component.Extension{
-		config.NewID("mock"): &MockAuthenticator{},
+	oidcServer, err := newOIDCServer()
+	require.NoError(t, err)
+	oidcServer.Start()
+	defer oidcServer.Close()
+
+	config := Authentication{
+		OIDC: &OIDC{
+			IssuerURL:   oidcServer.URL,
+			Audience:    "unit-test",
+			GroupsClaim: "memberships",
+		},
 	}
 
 	// test
-	componentID, err := config.NewIDFromString(cfg.AuthenticatorName)
-	assert.NoError(t, err)
-
-	authenticator, err := GetServerAuthenticator(ext, componentID)
+	opts, err := config.ToServerOptions()
 
 	// verify
 	assert.NoError(t, err)
-	assert.NotNil(t, authenticator)
+	assert.NotNil(t, opts)
+	assert.Len(t, opts, 2) // we have two interceptors
 }
 
-func TestGetAuthenticatorFails(t *testing.T) {
-	testCases := []struct {
-		desc     string
-		cfg      *Authentication
-		ext      map[config.ComponentID]component.Extension
-		expected error
+func TestInvalidConfigurationFailsOnToServerOptions(t *testing.T) {
+
+	for _, tt := range []struct {
+		cfg Authentication
 	}{
 		{
-			desc: "ServerAuthenticator not found",
-			cfg: &Authentication{
-				AuthenticatorName: "does-not-exist",
-			},
-			ext:      map[config.ComponentID]component.Extension{},
-			expected: errAuthenticatorNotFound,
+			Authentication{},
 		},
+		{
+			Authentication{
+				OIDC: &OIDC{
+					IssuerURL:   "http://oidc.acme.invalid",
+					Audience:    "unit-test",
+					GroupsClaim: "memberships",
+				},
+			},
+		},
+	} {
+		// test
+		opts, err := tt.cfg.ToServerOptions()
+
+		// verify
+		assert.Error(t, err)
+		assert.Nil(t, opts)
 	}
-	for _, tC := range testCases {
-		t.Run(tC.desc, func(t *testing.T) {
-			componentID, err := config.NewIDFromString(tC.cfg.AuthenticatorName)
-			assert.NoError(t, err)
-			authenticator, err := GetServerAuthenticator(tC.ext, componentID)
-			assert.ErrorIs(t, err, tC.expected)
-			assert.Nil(t, authenticator)
-		})
-	}
+
 }

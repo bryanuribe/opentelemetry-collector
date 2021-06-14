@@ -31,7 +31,6 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"go.opentelemetry.io/collector/translator/conventions"
 	tracetranslator "go.opentelemetry.io/collector/translator/trace"
 )
 
@@ -279,7 +278,7 @@ func TestZipkinAnnotationsToOCStatus(t *testing.T) {
 			},
 			wantAttributes: &tracepb.Span_Attributes{
 				AttributeMap: map[string]*tracepb.AttributeValue{
-					conventions.AttributeHTTPStatusCode: {
+					tracetranslator.TagHTTPStatusCode: {
 						Value: &tracepb.AttributeValue_IntValue{
 							IntValue: 404,
 						},
@@ -319,7 +318,7 @@ func TestZipkinAnnotationsToOCStatus(t *testing.T) {
 			},
 			wantAttributes: &tracepb.Span_Attributes{
 				AttributeMap: map[string]*tracepb.AttributeValue{
-					conventions.AttributeHTTPStatusCode: {
+					tracetranslator.TagHTTPStatusCode: {
 						Value: &tracepb.AttributeValue_IntValue{
 							IntValue: 404,
 						},
@@ -355,7 +354,7 @@ func TestZipkinAnnotationsToOCStatus(t *testing.T) {
 			},
 			wantAttributes: &tracepb.Span_Attributes{
 				AttributeMap: map[string]*tracepb.AttributeValue{
-					conventions.AttributeHTTPStatusCode: {
+					tracetranslator.TagHTTPStatusCode: {
 						Value: &tracepb.AttributeValue_IntValue{
 							IntValue: 404,
 						},
@@ -390,7 +389,7 @@ func TestZipkinAnnotationsToOCStatus(t *testing.T) {
 			},
 			wantAttributes: &tracepb.Span_Attributes{
 				AttributeMap: map[string]*tracepb.AttributeValue{
-					conventions.AttributeHTTPStatusCode: {
+					tracetranslator.TagHTTPStatusCode: {
 						Value: &tracepb.AttributeValue_IntValue{
 							IntValue: 404,
 						},
@@ -457,7 +456,7 @@ func TestZipkinAnnotationsToOCStatus(t *testing.T) {
 			},
 			wantAttributes: &tracepb.Span_Attributes{
 				AttributeMap: map[string]*tracepb.AttributeValue{
-					conventions.AttributeHTTPStatusCode: {
+					tracetranslator.TagHTTPStatusCode: {
 						Value: &tracepb.AttributeValue_IntValue{
 							IntValue: 404,
 						},
@@ -538,7 +537,7 @@ func TestSpanWithoutTimestampGetsTag(t *testing.T) {
 
 	wantAttributes := &tracepb.Span_Attributes{
 		AttributeMap: map[string]*tracepb.AttributeValue{
-			startTimeAbsent: {
+			StartTimeAbsent: {
 				Value: &tracepb.AttributeValue_BoolValue{
 					BoolValue: true,
 				},
@@ -553,7 +552,7 @@ func TestJSONHTTPToGRPCStatusCode(t *testing.T) {
 	fakeTraceID := "00000000000000010000000000000002"
 	fakeSpanID := "0000000000000001"
 	for i := int32(100); i <= 600; i++ {
-		wantStatus := ocStatusCodeFromHTTP(i)
+		wantStatus := tracetranslator.OCStatusCodeFromHTTP(i)
 		zBytes, err := json.Marshal([]*zipkinV1Span{{
 			ID:      fakeSpanID,
 			TraceID: fakeTraceID,

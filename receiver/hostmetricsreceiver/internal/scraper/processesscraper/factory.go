@@ -26,7 +26,7 @@ import (
 // This file implements Factory for Processes scraper.
 
 const (
-	// TypeStr the value of "type" key in configuration.
+	// The value of "type" key in configuration.
 	TypeStr = "processes"
 )
 

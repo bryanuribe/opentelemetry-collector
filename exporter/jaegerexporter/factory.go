@@ -19,8 +19,8 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configgrpc"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
@@ -34,15 +34,18 @@ func NewFactory() component.ExporterFactory {
 	return exporterhelper.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		exporterhelper.WithTraces(createTracesExporter))
+		exporterhelper.WithTraces(createTraceExporter))
 }
 
-func createDefaultConfig() config.Exporter {
+func createDefaultConfig() configmodels.Exporter {
 	return &Config{
-		ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
-		TimeoutSettings:  exporterhelper.DefaultTimeoutSettings(),
-		RetrySettings:    exporterhelper.DefaultRetrySettings(),
-		QueueSettings:    exporterhelper.DefaultQueueSettings(),
+		ExporterSettings: configmodels.ExporterSettings{
+			TypeVal: typeStr,
+			NameVal: typeStr,
+		},
+		TimeoutSettings: exporterhelper.DefaultTimeoutSettings(),
+		RetrySettings:   exporterhelper.DefaultRetrySettings(),
+		QueueSettings:   exporterhelper.DefaultQueueSettings(),
 		GRPCClientSettings: configgrpc.GRPCClientSettings{
 			// We almost read 0 bytes, so no need to tune ReadBufferSize.
 			WriteBufferSize: 512 * 1024,
@@ -50,19 +53,25 @@ func createDefaultConfig() config.Exporter {
 	}
 }
 
-func createTracesExporter(
+func createTraceExporter(
 	_ context.Context,
-	set component.ExporterCreateSettings,
-	config config.Exporter,
+	params component.ExporterCreateParams,
+	config configmodels.Exporter,
 ) (component.TracesExporter, error) {
 
 	expCfg := config.(*Config)
 	if expCfg.Endpoint == "" {
 		// TODO: Improve error message, see #215
-		return nil, fmt.Errorf(
+		err := fmt.Errorf(
 			"%q config requires a non-empty \"endpoint\"",
-			expCfg.ID().String())
+			expCfg.Name())
+		return nil, err
 	}
 
-	return newTracesExporter(expCfg, set.Logger)
+	exp, err := newTraceExporter(expCfg, params.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return exp, nil
 }

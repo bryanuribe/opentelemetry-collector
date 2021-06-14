@@ -19,13 +19,16 @@ import (
 	"strings"
 
 	"github.com/shirou/gopsutil/process"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/internal/version"
 	"go.opentelemetry.io/collector/service"
-	"go.opentelemetry.io/collector/service/parserprovider"
 )
 
 // OtelcolRunner defines the interface for configuring, starting and stopping one or more instances of
@@ -35,10 +38,10 @@ type OtelcolRunner interface {
 	// instance(s) this runner manages. If successful, it returns the cleanup config function to be executed after
 	// the test is executed.
 	PrepareConfig(configStr string) (configCleanup func(), err error)
-	// Start starts the otelcol instance(s) if not already running which is the subject of the test to be run.
+	// Starts the otelcol instance(s) if not already running which is the subject of the test to be run.
 	// It returns the host:port of the data receiver to post test data to.
 	Start(args StartParams) error
-	// Stop stops the otelcol instance(s) which are the subject of the test just run if applicable. Returns whether
+	// Stops the otelcol instance(s) which are the subject of the test just run if applicable. Returns whether
 	// the instance was actually stopped or not.
 	Stop() (stopped bool, err error)
 	// WatchResourceConsumption toggles on the monitoring of resource consumpution by the otelcol instance under test.
@@ -56,7 +59,7 @@ type OtelcolRunner interface {
 type InProcessCollector struct {
 	logger    *zap.Logger
 	factories component.Factories
-	configStr string
+	config    *configmodels.Config
 	svc       *service.Application
 	appDone   chan struct{}
 	stopped   bool
@@ -79,21 +82,36 @@ func (ipp *InProcessCollector) PrepareConfig(configStr string) (configCleanup fu
 		return configCleanup, err
 	}
 	ipp.logger = logger
-	ipp.configStr = configStr
+	v := config.NewViper()
+	v.SetConfigType("yaml")
+	v.ReadConfig(strings.NewReader(configStr))
+	cfg, err := config.Load(v, ipp.factories)
+	if err != nil {
+		return configCleanup, err
+	}
+	err = cfg.Validate()
+	if err != nil {
+		return configCleanup, err
+	}
+	ipp.config = cfg
 	return configCleanup, err
 }
 
 func (ipp *InProcessCollector) Start(args StartParams) error {
-	settings := service.AppSettings{
-		BuildInfo: component.BuildInfo{
-			Command: "otelcol",
-			Version: version.Version,
+	params := service.Parameters{
+		ApplicationStartInfo: component.ApplicationStartInfo{
+			ExeName:  "otelcol",
+			LongName: "InProcess Collector",
+			Version:  version.Version,
+			GitHash:  version.GitHash,
 		},
-		Factories:      ipp.factories,
-		ParserProvider: parserprovider.NewInMemory(strings.NewReader(ipp.configStr)),
+		ConfigFactory: func(_ *viper.Viper, _ *cobra.Command, _ component.Factories) (*configmodels.Config, error) {
+			return ipp.config, nil
+		},
+		Factories: ipp.factories,
 	}
 	var err error
-	ipp.svc, err = service.New(settings)
+	ipp.svc, err = service.New(params)
 	if err != nil {
 		return err
 	}

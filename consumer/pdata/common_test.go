@@ -27,49 +27,49 @@ import (
 
 func TestAttributeValue(t *testing.T) {
 	v := NewAttributeValueString("abc")
-	assert.EqualValues(t, AttributeValueTypeString, v.Type())
+	assert.EqualValues(t, AttributeValueSTRING, v.Type())
 	assert.EqualValues(t, "abc", v.StringVal())
 
 	v = NewAttributeValueInt(123)
-	assert.EqualValues(t, AttributeValueTypeInt, v.Type())
+	assert.EqualValues(t, AttributeValueINT, v.Type())
 	assert.EqualValues(t, 123, v.IntVal())
 
 	v = NewAttributeValueDouble(3.4)
-	assert.EqualValues(t, AttributeValueTypeDouble, v.Type())
+	assert.EqualValues(t, AttributeValueDOUBLE, v.Type())
 	assert.EqualValues(t, 3.4, v.DoubleVal())
 
 	v = NewAttributeValueBool(true)
-	assert.EqualValues(t, AttributeValueTypeBool, v.Type())
+	assert.EqualValues(t, AttributeValueBOOL, v.Type())
 	assert.True(t, v.BoolVal())
 
 	v = NewAttributeValueNull()
-	assert.EqualValues(t, AttributeValueTypeNull, v.Type())
+	assert.EqualValues(t, AttributeValueNULL, v.Type())
 
 	v.SetStringVal("abc")
-	assert.EqualValues(t, AttributeValueTypeString, v.Type())
+	assert.EqualValues(t, AttributeValueSTRING, v.Type())
 	assert.EqualValues(t, "abc", v.StringVal())
 
 	v.SetIntVal(123)
-	assert.EqualValues(t, AttributeValueTypeInt, v.Type())
+	assert.EqualValues(t, AttributeValueINT, v.Type())
 	assert.EqualValues(t, 123, v.IntVal())
 
 	v.SetDoubleVal(3.4)
-	assert.EqualValues(t, AttributeValueTypeDouble, v.Type())
+	assert.EqualValues(t, AttributeValueDOUBLE, v.Type())
 	assert.EqualValues(t, 3.4, v.DoubleVal())
 
 	v.SetBoolVal(true)
-	assert.EqualValues(t, AttributeValueTypeBool, v.Type())
+	assert.EqualValues(t, AttributeValueBOOL, v.Type())
 	assert.True(t, v.BoolVal())
 }
 
 func TestAttributeValueType(t *testing.T) {
-	assert.EqualValues(t, "NULL", AttributeValueTypeNull.String())
-	assert.EqualValues(t, "STRING", AttributeValueTypeString.String())
-	assert.EqualValues(t, "BOOL", AttributeValueTypeBool.String())
-	assert.EqualValues(t, "INT", AttributeValueTypeInt.String())
-	assert.EqualValues(t, "DOUBLE", AttributeValueTypeDouble.String())
-	assert.EqualValues(t, "MAP", AttributeValueTypeMap.String())
-	assert.EqualValues(t, "ARRAY", AttributeValueTypeArray.String())
+	assert.EqualValues(t, "NULL", AttributeValueNULL.String())
+	assert.EqualValues(t, "STRING", AttributeValueSTRING.String())
+	assert.EqualValues(t, "BOOL", AttributeValueBOOL.String())
+	assert.EqualValues(t, "INT", AttributeValueINT.String())
+	assert.EqualValues(t, "DOUBLE", AttributeValueDOUBLE.String())
+	assert.EqualValues(t, "MAP", AttributeValueMAP.String())
+	assert.EqualValues(t, "ARRAY", AttributeValueARRAY.String())
 }
 
 func fromVal(v interface{}) AttributeValue {
@@ -114,7 +114,7 @@ func assertMapJSON(t *testing.T, expectedJSON string, actualMap AttributeValue) 
 func TestAttributeValueMap(t *testing.T) {
 	m1 := NewAttributeValueMap()
 	assert.EqualValues(t, fromJSONMap(`{}`), m1)
-	assert.EqualValues(t, AttributeValueTypeMap, m1.Type())
+	assert.EqualValues(t, AttributeValueMAP, m1.Type())
 	assert.EqualValues(t, NewAttributeMap(), m1.MapVal())
 	assert.EqualValues(t, 0, m1.MapVal().Len())
 
@@ -124,7 +124,7 @@ func TestAttributeValueMap(t *testing.T) {
 
 	v, exists := m1.MapVal().Get("double_key")
 	require.True(t, exists)
-	assert.EqualValues(t, AttributeValueTypeDouble, v.Type())
+	assert.EqualValues(t, AttributeValueDOUBLE, v.Type())
 	assert.EqualValues(t, 123, v.DoubleVal())
 
 	// Create a second map.
@@ -145,12 +145,12 @@ func TestAttributeValueMap(t *testing.T) {
 	// Check that the map was correctly copied.
 	childMap, exists := m1.MapVal().Get("child_map")
 	require.True(t, exists)
-	assert.EqualValues(t, AttributeValueTypeMap, childMap.Type())
+	assert.EqualValues(t, AttributeValueMAP, childMap.Type())
 	assert.EqualValues(t, 1, childMap.MapVal().Len())
 
 	v, exists = childMap.MapVal().Get("key_in_child")
 	require.True(t, exists)
-	assert.EqualValues(t, AttributeValueTypeString, v.Type())
+	assert.EqualValues(t, AttributeValueSTRING, v.Type())
 	assert.EqualValues(t, "somestr", v.StringVal())
 
 	// Modify the source map m2 that was inserted into m1.
@@ -164,7 +164,7 @@ func TestAttributeValueMap(t *testing.T) {
 	require.True(t, exists)
 	v, exists = childMap.MapVal().Get("key_in_child")
 	require.True(t, exists)
-	assert.EqualValues(t, AttributeValueTypeString, v.Type())
+	assert.EqualValues(t, AttributeValueSTRING, v.Type())
 	assert.EqualValues(t, "somestr", v.StringVal())
 
 	// Now modify the inserted map (not the source)
@@ -174,13 +174,13 @@ func TestAttributeValueMap(t *testing.T) {
 
 	v, exists = childMap.MapVal().Get("key_in_child")
 	require.True(t, exists)
-	assert.EqualValues(t, AttributeValueTypeString, v.Type())
+	assert.EqualValues(t, AttributeValueSTRING, v.Type())
 	assert.EqualValues(t, "somestr3", v.StringVal())
 
 	// The source child map should not be modified.
 	v, exists = m2.MapVal().Get("key_in_child")
 	require.True(t, exists)
-	assert.EqualValues(t, AttributeValueTypeString, v.Type())
+	assert.EqualValues(t, AttributeValueSTRING, v.Type())
 	assert.EqualValues(t, "somestr2", v.StringVal())
 
 	deleted := m1.MapVal().Delete("double_key")
@@ -266,12 +266,12 @@ func TestAttributeValueEqual(t *testing.T) {
 	assert.False(t, av1.Equal(av2))
 
 	av1 = NewAttributeValueArray()
-	av1.ArrayVal().AppendEmpty().SetIntVal(123)
+	av1.ArrayVal().Append(NewAttributeValueInt(123))
 	assert.False(t, av1.Equal(av2))
 	assert.False(t, av2.Equal(av1))
 
 	av2 = NewAttributeValueArray()
-	av2.ArrayVal().AppendEmpty().SetDoubleVal(123)
+	av2.ArrayVal().Append(NewAttributeValueDouble(123))
 	assert.False(t, av1.Equal(av2))
 
 	NewAttributeValueInt(123).CopyTo(av2.ArrayVal().At(0))
@@ -380,132 +380,132 @@ func TestAttributeMapWithEmpty(t *testing.T) {
 	}
 	val, exist := sm.Get("test_key")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "test_value", val.StringVal())
 
 	val, exist = sm.Get("test_key2")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeNull, val.Type())
+	assert.EqualValues(t, AttributeValueNULL, val.Type())
 	assert.EqualValues(t, "", val.StringVal())
 
 	sm.Insert("other_key", NewAttributeValueString("other_value"))
 	val, exist = sm.Get("other_key")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "other_value", val.StringVal())
 
 	sm.InsertString("other_key_string", "other_value")
 	val, exist = sm.Get("other_key")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "other_value", val.StringVal())
 
 	sm.InsertInt("other_key_int", 123)
 	val, exist = sm.Get("other_key_int")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeInt, val.Type())
+	assert.EqualValues(t, AttributeValueINT, val.Type())
 	assert.EqualValues(t, 123, val.IntVal())
 
 	sm.InsertDouble("other_key_double", 1.23)
 	val, exist = sm.Get("other_key_double")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeDouble, val.Type())
+	assert.EqualValues(t, AttributeValueDOUBLE, val.Type())
 	assert.EqualValues(t, 1.23, val.DoubleVal())
 
 	sm.InsertBool("other_key_bool", true)
 	val, exist = sm.Get("other_key_bool")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeBool, val.Type())
+	assert.EqualValues(t, AttributeValueBOOL, val.Type())
 	assert.True(t, val.BoolVal())
 
 	sm.Update("other_key", NewAttributeValueString("yet_another_value"))
 	val, exist = sm.Get("other_key")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "yet_another_value", val.StringVal())
 
 	sm.UpdateString("other_key_string", "yet_another_value")
 	val, exist = sm.Get("other_key_string")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "yet_another_value", val.StringVal())
 
 	sm.UpdateInt("other_key_int", 456)
 	val, exist = sm.Get("other_key_int")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeInt, val.Type())
+	assert.EqualValues(t, AttributeValueINT, val.Type())
 	assert.EqualValues(t, 456, val.IntVal())
 
 	sm.UpdateDouble("other_key_double", 4.56)
 	val, exist = sm.Get("other_key_double")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeDouble, val.Type())
+	assert.EqualValues(t, AttributeValueDOUBLE, val.Type())
 	assert.EqualValues(t, 4.56, val.DoubleVal())
 
 	sm.UpdateBool("other_key_bool", false)
 	val, exist = sm.Get("other_key_bool")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeBool, val.Type())
+	assert.EqualValues(t, AttributeValueBOOL, val.Type())
 	assert.False(t, val.BoolVal())
 
 	sm.Upsert("other_key", NewAttributeValueString("other_value"))
 	val, exist = sm.Get("other_key")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "other_value", val.StringVal())
 
 	sm.UpsertString("other_key_string", "other_value")
 	val, exist = sm.Get("other_key")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "other_value", val.StringVal())
 
 	sm.UpsertInt("other_key_int", 123)
 	val, exist = sm.Get("other_key_int")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeInt, val.Type())
+	assert.EqualValues(t, AttributeValueINT, val.Type())
 	assert.EqualValues(t, 123, val.IntVal())
 
 	sm.UpsertDouble("other_key_double", 1.23)
 	val, exist = sm.Get("other_key_double")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeDouble, val.Type())
+	assert.EqualValues(t, AttributeValueDOUBLE, val.Type())
 	assert.EqualValues(t, 1.23, val.DoubleVal())
 
 	sm.UpsertBool("other_key_bool", true)
 	val, exist = sm.Get("other_key_bool")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeBool, val.Type())
+	assert.EqualValues(t, AttributeValueBOOL, val.Type())
 	assert.True(t, val.BoolVal())
 
 	sm.Upsert("yet_another_key", NewAttributeValueString("yet_another_value"))
 	val, exist = sm.Get("yet_another_key")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "yet_another_value", val.StringVal())
 
 	sm.UpsertString("yet_another_key_string", "yet_another_value")
 	val, exist = sm.Get("yet_another_key_string")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "yet_another_value", val.StringVal())
 
 	sm.UpsertInt("yet_another_key_int", 456)
 	val, exist = sm.Get("yet_another_key_int")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeInt, val.Type())
+	assert.EqualValues(t, AttributeValueINT, val.Type())
 	assert.EqualValues(t, 456, val.IntVal())
 
 	sm.UpsertDouble("yet_another_key_double", 4.56)
 	val, exist = sm.Get("yet_another_key_double")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeDouble, val.Type())
+	assert.EqualValues(t, AttributeValueDOUBLE, val.Type())
 	assert.EqualValues(t, 4.56, val.DoubleVal())
 
 	sm.UpsertBool("yet_another_key_bool", false)
 	val, exist = sm.Get("yet_another_key_bool")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeBool, val.Type())
+	assert.EqualValues(t, AttributeValueBOOL, val.Type())
 	assert.False(t, val.BoolVal())
 
 	assert.True(t, sm.Delete("other_key"))
@@ -524,12 +524,12 @@ func TestAttributeMapWithEmpty(t *testing.T) {
 	// Test that the initial key is still there.
 	val, exist = sm.Get("test_key")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "test_value", val.StringVal())
 
 	val, exist = sm.Get("test_key2")
 	assert.True(t, exist)
-	assert.EqualValues(t, AttributeValueTypeNull, val.Type())
+	assert.EqualValues(t, AttributeValueNULL, val.Type())
 	assert.EqualValues(t, "", val.StringVal())
 
 	_, exist = sm.Get("test_key3")
@@ -540,14 +540,13 @@ func TestAttributeMapWithEmpty(t *testing.T) {
 }
 
 func TestAttributeMapIterationNil(t *testing.T) {
-	NewAttributeMap().Range(func(k string, v AttributeValue) bool {
+	NewAttributeMap().ForEach(func(k string, v AttributeValue) {
 		// Fail if any element is returned
 		t.Fail()
-		return true
 	})
 }
 
-func TestAttributeMap_Range(t *testing.T) {
+func TestAttributeMap_ForEach(t *testing.T) {
 	rawMap := map[string]AttributeValue{
 		"k_string": NewAttributeValueString("123"),
 		"k_int":    NewAttributeValueInt(123),
@@ -556,19 +555,11 @@ func TestAttributeMap_Range(t *testing.T) {
 		"k_null":   NewAttributeValueNull(),
 	}
 	am := NewAttributeMap().InitFromMap(rawMap)
-	assert.Equal(t, 5, am.Len())
+	assert.EqualValues(t, 5, am.Len())
 
-	calls := 0
-	am.Range(func(k string, v AttributeValue) bool {
-		calls++
-		return false
-	})
-	assert.Equal(t, 1, calls)
-
-	am.Range(func(k string, v AttributeValue) bool {
+	am.ForEach(func(k string, v AttributeValue) {
 		assert.True(t, v.Equal(rawMap[k]))
 		delete(rawMap, k)
-		return true
 	})
 	assert.EqualValues(t, 0, len(rawMap))
 }
@@ -657,56 +648,32 @@ func TestAttributeMap_Update(t *testing.T) {
 
 	av, exists := sm.Get("test_key")
 	assert.True(t, exists)
-	assert.EqualValues(t, AttributeValueTypeString, av.Type())
+	assert.EqualValues(t, AttributeValueSTRING, av.Type())
 	assert.EqualValues(t, "test_value", av.StringVal())
 	av.SetIntVal(123)
 
 	av2, exists := sm.Get("test_key")
 	assert.True(t, exists)
-	assert.EqualValues(t, AttributeValueTypeInt, av2.Type())
+	assert.EqualValues(t, AttributeValueINT, av2.Type())
 	assert.EqualValues(t, 123, av2.IntVal())
 
 	av, exists = sm.Get("test_key2")
 	assert.True(t, exists)
-	assert.EqualValues(t, AttributeValueTypeNull, av.Type())
+	assert.EqualValues(t, AttributeValueNULL, av.Type())
 	assert.EqualValues(t, "", av.StringVal())
 	av.SetIntVal(123)
 
 	av2, exists = sm.Get("test_key2")
 	assert.True(t, exists)
-	assert.EqualValues(t, AttributeValueTypeInt, av2.Type())
+	assert.EqualValues(t, AttributeValueINT, av2.Type())
 	assert.EqualValues(t, 123, av2.IntVal())
 }
 
-func TestAttributeMap_EnsureCapacity_Zero(t *testing.T) {
+func TestAttributeMap_InitEmptyWithCapacity(t *testing.T) {
 	am := NewAttributeMap()
-	am.EnsureCapacity(0)
+	am.InitEmptyWithCapacity(0)
+	assert.Equal(t, NewAttributeMap(), am)
 	assert.Equal(t, 0, am.Len())
-	assert.Equal(t, 0, cap(*am.orig))
-}
-
-func TestAttributeMap_EnsureCapacity(t *testing.T) {
-	am := NewAttributeMap()
-	am.EnsureCapacity(5)
-	assert.Equal(t, 0, am.Len())
-	assert.Equal(t, 5, cap(*am.orig))
-	am.EnsureCapacity(3)
-	assert.Equal(t, 0, am.Len())
-	assert.Equal(t, 5, cap(*am.orig))
-	am.EnsureCapacity(8)
-	assert.Equal(t, 0, am.Len())
-	assert.Equal(t, 8, cap(*am.orig))
-}
-
-func TestAttributeMap_Clear(t *testing.T) {
-	am := NewAttributeMap()
-	assert.Nil(t, *am.orig)
-	am.Clear()
-	assert.Nil(t, *am.orig)
-	am.EnsureCapacity(5)
-	assert.NotNil(t, *am.orig)
-	am.Clear()
-	assert.Nil(t, *am.orig)
 }
 
 func TestNilStringMap(t *testing.T) {
@@ -846,29 +813,20 @@ func TestStringMap(t *testing.T) {
 }
 
 func TestStringMapIterationNil(t *testing.T) {
-	NewStringMap().Range(func(k string, v string) bool {
+	NewStringMap().ForEach(func(k string, v string) {
 		// Fail if any element is returned
 		t.Fail()
-		return true
 	})
 }
 
-func TestStringMap_Range(t *testing.T) {
+func TestStringMap_ForEach(t *testing.T) {
 	rawMap := map[string]string{"k0": "v0", "k1": "v1", "k2": "v2"}
 	sm := NewStringMap().InitFromMap(rawMap)
 	assert.EqualValues(t, 3, sm.Len())
 
-	calls := 0
-	sm.Range(func(k string, v string) bool {
-		calls++
-		return false
-	})
-	assert.Equal(t, 1, calls)
-
-	sm.Range(func(k string, v string) bool {
+	sm.ForEach(func(k string, v string) {
 		assert.EqualValues(t, rawMap[k], v)
 		delete(rawMap, k)
-		return true
 	})
 	assert.EqualValues(t, 0, len(rawMap))
 }
@@ -888,35 +846,11 @@ func TestStringMap_CopyTo(t *testing.T) {
 	assert.EqualValues(t, generateTestStringMap(), dest)
 }
 
-func TestStringMap_EnsureCapacity_Zero(t *testing.T) {
+func TestStringMap_InitEmptyWithCapacity(t *testing.T) {
 	sm := NewStringMap()
-	sm.EnsureCapacity(0)
+	sm.InitEmptyWithCapacity(0)
+	assert.Equal(t, NewStringMap(), sm)
 	assert.Equal(t, 0, sm.Len())
-	assert.Equal(t, 0, cap(*sm.orig))
-}
-
-func TestStringMap_EnsureCapacity(t *testing.T) {
-	sm := NewStringMap()
-	sm.EnsureCapacity(5)
-	assert.Equal(t, 0, sm.Len())
-	assert.Equal(t, 5, cap(*sm.orig))
-	sm.EnsureCapacity(3)
-	assert.Equal(t, 0, sm.Len())
-	assert.Equal(t, 5, cap(*sm.orig))
-	sm.EnsureCapacity(8)
-	assert.Equal(t, 0, sm.Len())
-	assert.Equal(t, 8, cap(*sm.orig))
-}
-
-func TestStringMap_Clear(t *testing.T) {
-	sm := NewStringMap()
-	assert.Nil(t, *sm.orig)
-	sm.Clear()
-	assert.Nil(t, *sm.orig)
-	sm.EnsureCapacity(5)
-	assert.NotNil(t, *sm.orig)
-	sm.Clear()
-	assert.Nil(t, *sm.orig)
 }
 
 func TestStringMap_InitFromMap(t *testing.T) {
@@ -967,7 +901,7 @@ func BenchmarkAttributeValue_SetIntVal(b *testing.B) {
 	}
 }
 
-func BenchmarkAttributeMap_Range(b *testing.B) {
+func BenchmarkAttributeMap_ForEach(b *testing.B) {
 	const numElements = 20
 	rawOrig := make([]otlpcommon.KeyValue, numElements)
 	for i := 0; i < numElements; i++ {
@@ -982,9 +916,8 @@ func BenchmarkAttributeMap_Range(b *testing.B) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		numEls := 0
-		am.Range(func(k string, v AttributeValue) bool {
+		am.ForEach(func(k string, v AttributeValue) {
 			numEls++
-			return true
 		})
 		if numEls != numElements {
 			b.Fail()
@@ -1014,7 +947,7 @@ func BenchmarkAttributeMap_RangeOverMap(b *testing.B) {
 	}
 }
 
-func BenchmarkStringMap_Range(b *testing.B) {
+func BenchmarkStringMap_ForEach(b *testing.B) {
 	const numElements = 20
 	rawOrig := make([]otlpcommon.StringKeyValue, numElements)
 	for i := 0; i < numElements; i++ {
@@ -1029,9 +962,8 @@ func BenchmarkStringMap_Range(b *testing.B) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		numEls := 0
-		sm.Range(func(s string, value string) bool {
+		sm.ForEach(func(s string, value string) {
 			numEls++
-			return true
 		})
 		if numEls != numElements {
 			b.Fail()
@@ -1152,15 +1084,16 @@ func assertArrayJSON(t *testing.T, expectedJSON string, actualArray AttributeVal
 func TestAttributeValueArray(t *testing.T) {
 	a1 := NewAttributeValueArray()
 	assert.EqualValues(t, fromJSONArray(`[]`), a1)
-	assert.EqualValues(t, AttributeValueTypeArray, a1.Type())
+	assert.EqualValues(t, AttributeValueARRAY, a1.Type())
 	assert.EqualValues(t, NewAnyValueArray(), a1.ArrayVal())
 	assert.EqualValues(t, 0, a1.ArrayVal().Len())
 
-	v := a1.ArrayVal().AppendEmpty()
+	a1.ArrayVal().Resize(1)
+	v := a1.ArrayVal().At(0)
 	v.SetDoubleVal(123)
 	assertArrayJSON(t, `[123]`, a1)
 	assert.EqualValues(t, 1, a1.ArrayVal().Len())
-	assert.EqualValues(t, AttributeValueTypeDouble, v.Type())
+	assert.EqualValues(t, AttributeValueDOUBLE, v.Type())
 	assert.EqualValues(t, 123, v.DoubleVal())
 
 	// Create a second array.
@@ -1168,7 +1101,8 @@ func TestAttributeValueArray(t *testing.T) {
 	assertArrayJSON(t, `[]`, a2)
 	assert.EqualValues(t, 0, a2.ArrayVal().Len())
 
-	a2.ArrayVal().AppendEmpty().SetStringVal("somestr")
+	a2.ArrayVal().Resize(1)
+	a2.ArrayVal().At(0).SetStringVal("somestr")
 	assertArrayJSON(t, `["somestr"]`, a2)
 	assert.EqualValues(t, 1, a2.ArrayVal().Len())
 
@@ -1179,11 +1113,11 @@ func TestAttributeValueArray(t *testing.T) {
 
 	// Check that the array was correctly inserted.
 	childArray := a1.ArrayVal().At(1)
-	assert.EqualValues(t, AttributeValueTypeArray, childArray.Type())
+	assert.EqualValues(t, AttributeValueARRAY, childArray.Type())
 	assert.EqualValues(t, 1, childArray.ArrayVal().Len())
 
 	v = childArray.ArrayVal().At(0)
-	assert.EqualValues(t, AttributeValueTypeString, v.Type())
+	assert.EqualValues(t, AttributeValueSTRING, v.Type())
 	assert.EqualValues(t, "somestr", v.StringVal())
 
 	// Test nil values case for ArrayVal() func.
@@ -1201,15 +1135,15 @@ func TestAnyValueArrayWithNilValues(t *testing.T) {
 	}
 
 	val := sm.At(0)
-	assert.EqualValues(t, AttributeValueTypeNull, val.Type())
+	assert.EqualValues(t, AttributeValueNULL, val.Type())
 	assert.EqualValues(t, "", val.StringVal())
 
 	val = sm.At(1)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "test_value", val.StringVal())
 
-	sm.AppendEmpty().SetStringVal("other_value")
+	sm.Append(NewAttributeValueString("other_value"))
 	val = sm.At(2)
-	assert.EqualValues(t, AttributeValueTypeString, val.Type())
+	assert.EqualValues(t, AttributeValueSTRING, val.Type())
 	assert.EqualValues(t, "other_value", val.StringVal())
 }

@@ -17,28 +17,38 @@ package extensionhelper
 import (
 	"context"
 
+	"github.com/spf13/viper"
+
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/configmodels"
 )
 
 // FactoryOption apply changes to ExporterOptions.
 type FactoryOption func(o *factory)
 
 // CreateDefaultConfig is the equivalent of component.ExtensionFactory.CreateDefaultConfig()
-type CreateDefaultConfig func() config.Extension
+type CreateDefaultConfig func() configmodels.Extension
 
 // CreateServiceExtension is the equivalent of component.ExtensionFactory.CreateExtension()
-type CreateServiceExtension func(context.Context, component.ExtensionCreateSettings, config.Extension) (component.Extension, error)
+type CreateServiceExtension func(context.Context, component.ExtensionCreateParams, configmodels.Extension) (component.Extension, error)
 
 type factory struct {
-	cfgType                config.Type
+	cfgType                configmodels.Type
+	customUnmarshaler      component.CustomUnmarshaler
 	createDefaultConfig    CreateDefaultConfig
 	createServiceExtension CreateServiceExtension
 }
 
+// WithCustomUnmarshaler implements component.ConfigUnmarshaler.
+func WithCustomUnmarshaler(customUnmarshaler component.CustomUnmarshaler) FactoryOption {
+	return func(o *factory) {
+		o.customUnmarshaler = customUnmarshaler
+	}
+}
+
 // NewFactory returns a component.ExtensionFactory.
 func NewFactory(
-	cfgType config.Type,
+	cfgType configmodels.Type,
 	createDefaultConfig CreateDefaultConfig,
 	createServiceExtension CreateServiceExtension,
 	options ...FactoryOption) component.ExtensionFactory {
@@ -50,23 +60,40 @@ func NewFactory(
 	for _, opt := range options {
 		opt(f)
 	}
-	return f
+	var ret component.ExtensionFactory
+	if f.customUnmarshaler != nil {
+		ret = &factoryWithUnmarshaler{f}
+	} else {
+		ret = f
+	}
+	return ret
 }
 
 // Type gets the type of the Extension config created by this factory.
-func (f *factory) Type() config.Type {
+func (f *factory) Type() configmodels.Type {
 	return f.cfgType
 }
 
 // CreateDefaultConfig creates the default configuration for processor.
-func (f *factory) CreateDefaultConfig() config.Extension {
+func (f *factory) CreateDefaultConfig() configmodels.Extension {
 	return f.createDefaultConfig()
 }
 
 // CreateExtension creates a component.TraceExtension based on this config.
 func (f *factory) CreateExtension(
 	ctx context.Context,
-	set component.ExtensionCreateSettings,
-	cfg config.Extension) (component.Extension, error) {
-	return f.createServiceExtension(ctx, set, cfg)
+	params component.ExtensionCreateParams,
+	cfg configmodels.Extension) (component.Extension, error) {
+	return f.createServiceExtension(ctx, params, cfg)
+}
+
+var _ component.ConfigUnmarshaler = (*factoryWithUnmarshaler)(nil)
+
+type factoryWithUnmarshaler struct {
+	*factory
+}
+
+// Unmarshal un-marshals the config using the provided custom unmarshaler.
+func (f *factoryWithUnmarshaler) Unmarshal(componentViperSection *viper.Viper, intoCfg interface{}) error {
+	return f.customUnmarshaler(componentViperSection, intoCfg)
 }

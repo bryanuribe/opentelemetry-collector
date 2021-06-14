@@ -22,16 +22,19 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/spf13/viper"
+
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/confighttp"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver/receiverhelper"
 )
 
 const (
+	// The value of "type" key in configuration.
 	typeStr = "jaeger"
 
 	// Protocol values.
@@ -48,18 +51,73 @@ const (
 	defaultAgentRemoteSamplingHTTPPort = 5778
 )
 
-// NewFactory creates a new Jaeger receiver factory.
 func NewFactory() component.ReceiverFactory {
 	return receiverhelper.NewFactory(
 		typeStr,
 		createDefaultConfig,
-		receiverhelper.WithTraces(createTracesReceiver))
+		receiverhelper.WithTraces(createTraceReceiver),
+		receiverhelper.WithCustomUnmarshaler(customUnmarshaler))
+}
+
+// customUnmarshaler is used to add defaults for named but empty protocols
+func customUnmarshaler(componentViperSection *viper.Viper, intoCfg interface{}) error {
+	if componentViperSection == nil || len(componentViperSection.AllKeys()) == 0 {
+		return fmt.Errorf("empty config for Jaeger receiver")
+	}
+
+	componentViperSection.SetConfigType("yaml")
+
+	// UnmarshalExact will not set struct properties to nil even if no key is provided,
+	// so set the protocol structs to nil where the keys were omitted.
+	err := componentViperSection.UnmarshalExact(intoCfg)
+	if err != nil {
+		return err
+	}
+
+	receiverCfg := intoCfg.(*Config)
+
+	protocols := componentViperSection.GetStringMap(protocolsFieldName)
+	if len(protocols) == 0 {
+		return fmt.Errorf("must specify at least one protocol when using the Jaeger receiver")
+	}
+
+	knownProtocols := 0
+	if _, ok := protocols[protoGRPC]; !ok {
+		receiverCfg.GRPC = nil
+	} else {
+		knownProtocols++
+	}
+	if _, ok := protocols[protoThriftHTTP]; !ok {
+		receiverCfg.ThriftHTTP = nil
+	} else {
+		knownProtocols++
+	}
+	if _, ok := protocols[protoThriftBinary]; !ok {
+		receiverCfg.ThriftBinary = nil
+	} else {
+		knownProtocols++
+	}
+	if _, ok := protocols[protoThriftCompact]; !ok {
+		receiverCfg.ThriftCompact = nil
+	} else {
+		knownProtocols++
+	}
+	// UnmarshalExact will ignore empty entries like a protocol with no values, so if a typo happened
+	// in the protocol that is intended to be enabled will not be enabled. So check if the protocols
+	// include only known protocols.
+	if len(protocols) != knownProtocols {
+		return fmt.Errorf("unknown protocols in the Jaeger receiver")
+	}
+	return nil
 }
 
 // CreateDefaultConfig creates the default configuration for Jaeger receiver.
-func createDefaultConfig() config.Receiver {
+func createDefaultConfig() configmodels.Receiver {
 	return &Config{
-		ReceiverSettings: config.NewReceiverSettings(config.NewID(typeStr)),
+		ReceiverSettings: configmodels.ReceiverSettings{
+			TypeVal: typeStr,
+			NameVal: typeStr,
+		},
 		Protocols: Protocols{
 			GRPC: &configgrpc.GRPCServerSettings{
 				NetAddr: confignet.NetAddr{
@@ -82,11 +140,11 @@ func createDefaultConfig() config.Receiver {
 	}
 }
 
-// createTracesReceiver creates a trace receiver based on provided config.
-func createTracesReceiver(
+// createTraceReceiver creates a trace receiver based on provided config.
+func createTraceReceiver(
 	_ context.Context,
-	set component.ReceiverCreateSettings,
-	cfg config.Receiver,
+	params component.ReceiverCreateParams,
+	cfg configmodels.Receiver,
 	nextConsumer consumer.Traces,
 ) (component.TracesReceiver, error) {
 
@@ -99,11 +157,15 @@ func createTracesReceiver(
 	var config configuration
 	// Set ports
 	if rCfg.Protocols.GRPC != nil {
-		config.CollectorGRPCServerSettings = *rCfg.Protocols.GRPC
 		var err error
 		config.CollectorGRPCPort, err = extractPortFromEndpoint(rCfg.Protocols.GRPC.NetAddr.Endpoint)
 		if err != nil {
 			return nil, fmt.Errorf("unable to extract port for GRPC: %w", err)
+		}
+
+		config.CollectorGRPCOptions, err = rCfg.Protocols.GRPC.ToServerOption()
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -113,8 +175,6 @@ func createTracesReceiver(
 		if err != nil {
 			return nil, fmt.Errorf("unable to extract port for ThriftHTTP: %w", err)
 		}
-
-		config.CollectorHTTPSettings = *rCfg.ThriftHTTP
 	}
 
 	if rCfg.Protocols.ThriftBinary != nil {
@@ -168,13 +228,13 @@ func createTracesReceiver(
 			rCfg.Protocols.ThriftHTTP,
 			rCfg.Protocols.ThriftCompact,
 			rCfg.Protocols.ThriftBinary,
-			cfg.ID().String(),
+			typeStr,
 		)
 		return nil, err
 	}
 
 	// Create the receiver.
-	return newJaegerReceiver(rCfg.ID(), &config, nextConsumer, set), nil
+	return newJaegerReceiver(rCfg.Name(), &config, nextConsumer, params), nil
 }
 
 // extract the port number from string in "address:port" format. If the

@@ -102,7 +102,10 @@ func (s *scraper) scrape(_ context.Context) (pdata.ResourceMetricsSlice, error) 
 	for i, md := range metadata {
 		rm := rms.At(i)
 		md.initializeResource(rm.Resource())
-		metrics := rm.InstrumentationLibraryMetrics().AppendEmpty().Metrics()
+
+		ilms := rm.InstrumentationLibraryMetrics()
+		ilms.Resize(1)
+		metrics := ilms.At(0).Metrics()
 
 		now := pdata.TimestampFromTime(time.Now())
 
@@ -210,7 +213,10 @@ func scrapeAndAppendMemoryUsageMetrics(metrics pdata.MetricSlice, now pdata.Time
 
 func initializeMemoryUsageMetric(metric pdata.Metric, metricIntf metadata.MetricIntf, now pdata.Timestamp, usage int64) {
 	metricIntf.Init(metric)
-	initializeMemoryUsageDataPoint(metric.IntSum().DataPoints().AppendEmpty(), now, usage)
+
+	idps := metric.IntSum().DataPoints()
+	idps.Resize(1)
+	initializeMemoryUsageDataPoint(idps.At(0), now, usage)
 }
 
 func initializeMemoryUsageDataPoint(dataPoint pdata.IntDataPoint, now pdata.Timestamp, usage int64) {
@@ -242,7 +248,7 @@ func initializeDiskIOMetric(metric pdata.Metric, startTime, now pdata.Timestamp,
 func initializeDiskIODataPoint(dataPoint pdata.IntDataPoint, startTime, now pdata.Timestamp, value int64, directionLabel string) {
 	labelsMap := dataPoint.LabelsMap()
 	labelsMap.Insert(metadata.Labels.ProcessDirection, directionLabel)
-	dataPoint.SetStartTimestamp(startTime)
+	dataPoint.SetStartTime(startTime)
 	dataPoint.SetTimestamp(now)
 	dataPoint.SetValue(value)
 }

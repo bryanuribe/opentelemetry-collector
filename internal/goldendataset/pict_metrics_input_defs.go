@@ -28,7 +28,7 @@ type PICTMetricInputs struct {
 	NumResourceAttrs PICTNumResourceAttrs
 }
 
-// PICTMetricDataType enumerates the types of metrics that can be generated.
+// Enumerates the types of metrics that can be generated.
 type PICTMetricDataType string
 
 const (
@@ -39,10 +39,10 @@ const (
 	MetricTypeMonotonicDoubleSum    PICTMetricDataType = "MonotonicDoubleSum"
 	MetricTypeNonMonotonicDoubleSum PICTMetricDataType = "NonMonotonicDoubleSum"
 	MetricTypeIntHistogram          PICTMetricDataType = "IntHistogram"
-	MetricTypeHistogram             PICTMetricDataType = "Histogram"
+	MetricTypeDoubleHistogram       PICTMetricDataType = "DoubleHistogram"
 )
 
-// PICTNumPtLabels enumerates the number of labels on each datapoint.
+// Enumerates the number of labels on each datapoint.
 type PICTNumPtLabels string
 
 const (
@@ -51,7 +51,7 @@ const (
 	LabelsMany PICTNumPtLabels = "ManyLabels"
 )
 
-// PICTNumPtsPerMetric enum for the number of points on each metric.
+// Enumerates the number of points on each metric.
 type PICTNumPtsPerMetric string
 
 const (
@@ -59,7 +59,7 @@ const (
 	NumPtsPerMetricMany PICTNumPtsPerMetric = "ManyPts"
 )
 
-// PICTNumResourceAttrs enum for the number of attributes on each resource.
+// Enumerates the number of attributes on each resource.
 type PICTNumResourceAttrs string
 
 const (

@@ -40,6 +40,7 @@ func newMemoryScraper(_ context.Context, cfg *Config) *scraper {
 	return &scraper{config: cfg, virtualMemory: mem.VirtualMemory}
 }
 
+// Scrape
 func (s *scraper) Scrape(_ context.Context) (pdata.MetricSlice, error) {
 	metrics := pdata.NewMetricSlice()
 
