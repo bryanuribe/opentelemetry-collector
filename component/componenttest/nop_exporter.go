@@ -17,12 +17,25 @@ package componenttest
 import (
 	"context"
 
+	"go.uber.org/zap"
+
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenthelper"
-	"go.opentelemetry.io/collector/config/configmodels"
-	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 )
+
+// NewNopExporterCreateSettings returns a new nop settings for Create*Exporter functions.
+func NewNopExporterCreateSettings() component.ExporterCreateSettings {
+	return component.ExporterCreateSettings{
+		Logger:    zap.NewNop(),
+		BuildInfo: component.DefaultBuildInfo(),
+	}
+}
+
+type nopExporterConfig struct {
+	config.ExporterSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+}
 
 // nopExporterFactory is factory for nopExporter.
 type nopExporterFactory struct{}
@@ -35,22 +48,22 @@ func NewNopExporterFactory() component.ExporterFactory {
 }
 
 // Type gets the type of the Exporter config created by this factory.
-func (f *nopExporterFactory) Type() configmodels.Type {
+func (f *nopExporterFactory) Type() config.Type {
 	return "nop"
 }
 
 // CreateDefaultConfig creates the default configuration for the Exporter.
-func (f *nopExporterFactory) CreateDefaultConfig() configmodels.Exporter {
-	return &configmodels.ExporterSettings{
-		TypeVal: f.Type(),
+func (f *nopExporterFactory) CreateDefaultConfig() config.Exporter {
+	return &nopExporterConfig{
+		ExporterSettings: config.NewExporterSettings(config.NewID("nop")),
 	}
 }
 
 // CreateTracesExporter implements component.ExporterFactory interface.
 func (f *nopExporterFactory) CreateTracesExporter(
 	_ context.Context,
-	_ component.ExporterCreateParams,
-	_ configmodels.Exporter,
+	_ component.ExporterCreateSettings,
+	_ config.Exporter,
 ) (component.TracesExporter, error) {
 	return nopExporterInstance, nil
 }
@@ -58,32 +71,28 @@ func (f *nopExporterFactory) CreateTracesExporter(
 // CreateMetricsExporter implements component.ExporterFactory interface.
 func (f *nopExporterFactory) CreateMetricsExporter(
 	_ context.Context,
-	_ component.ExporterCreateParams,
-	_ configmodels.Exporter,
+	_ component.ExporterCreateSettings,
+	_ config.Exporter,
 ) (component.MetricsExporter, error) {
 	return nopExporterInstance, nil
 }
 
-// CreateMetricsExporter implements component.ExporterFactory interface.
+// CreateLogsExporter implements component.ExporterFactory interface.
 func (f *nopExporterFactory) CreateLogsExporter(
 	_ context.Context,
-	_ component.ExporterCreateParams,
-	_ configmodels.Exporter,
+	_ component.ExporterCreateSettings,
+	_ config.Exporter,
 ) (component.LogsExporter, error) {
 	return nopExporterInstance, nil
 }
 
 var nopExporterInstance = &nopExporter{
-	Component: componenthelper.NewComponent(componenthelper.DefaultComponentSettings()),
-	Traces:    consumertest.NewTracesNop(),
-	Metrics:   consumertest.NewMetricsNop(),
-	Logs:      consumertest.NewLogsNop(),
+	Component: componenthelper.New(),
+	Consumer:  consumertest.NewNop(),
 }
 
 // nopExporter stores consumed traces and metrics for testing purposes.
 type nopExporter struct {
 	component.Component
-	consumer.Traces
-	consumer.Metrics
-	consumer.Logs
+	consumertest.Consumer
 }

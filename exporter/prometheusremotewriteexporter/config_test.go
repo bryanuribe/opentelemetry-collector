@@ -23,8 +23,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/confighttp"
-	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -37,34 +37,30 @@ func Test_loadConfig(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Exporters[typeStr] = factory
-	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
+	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
 
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
 	// From the default configurations -- checks if a correct exporter is instantiated
-	e0 := cfg.Exporters["prometheusremotewrite"]
+	e0 := cfg.Exporters[(config.NewID(typeStr))]
 	assert.Equal(t, e0, factory.CreateDefaultConfig())
 
 	// checks if the correct Config struct can be instantiated from testdata/config.yaml
-	e1 := cfg.Exporters["prometheusremotewrite/2"]
+	e1 := cfg.Exporters[config.NewIDWithName(typeStr, "2")]
 	assert.Equal(t, e1,
 		&Config{
-			ExporterSettings: configmodels.ExporterSettings{
-				NameVal: "prometheusremotewrite/2",
-				TypeVal: "prometheusremotewrite",
-			},
-			TimeoutSettings: exporterhelper.DefaultTimeoutSettings(),
-			QueueSettings: exporterhelper.QueueSettings{
-				Enabled:      true,
-				NumConsumers: 2,
-				QueueSize:    10,
-			},
+			ExporterSettings: config.NewExporterSettings(config.NewIDWithName(typeStr, "2")),
+			TimeoutSettings:  exporterhelper.DefaultTimeoutSettings(),
 			RetrySettings: exporterhelper.RetrySettings{
 				Enabled:         true,
 				InitialInterval: 10 * time.Second,
 				MaxInterval:     1 * time.Minute,
 				MaxElapsedTime:  10 * time.Minute,
+			},
+			RemoteWriteQueue: RemoteWriteQueue{
+				QueueSize:    2000,
+				NumConsumers: 10,
 			},
 			Namespace:      "test-space",
 			ExternalLabels: map[string]string{"key1": "value1", "key2": "value2"},
@@ -83,5 +79,26 @@ func Test_loadConfig(t *testing.T) {
 					"prometheus-remote-write-version": "0.1.0",
 					"x-scope-orgid":                   "234"},
 			},
+			ResourceToTelemetrySettings: exporterhelper.ResourceToTelemetrySettings{Enabled: true},
 		})
+}
+
+func TestNegativeQueueSize(t *testing.T) {
+	factories, err := componenttest.NopFactories()
+	assert.NoError(t, err)
+
+	factory := NewFactory()
+	factories.Exporters[typeStr] = factory
+	_, err = configtest.LoadConfigAndValidate(path.Join(".", "testdata", "negative_queue_size.yaml"), factories)
+	assert.Error(t, err)
+}
+
+func TestNegativeNumConsumers(t *testing.T) {
+	factories, err := componenttest.NopFactories()
+	assert.NoError(t, err)
+
+	factory := NewFactory()
+	factories.Exporters[typeStr] = factory
+	_, err = configtest.LoadConfigAndValidate(path.Join(".", "testdata", "negative_num_consumers.yaml"), factories)
+	assert.Error(t, err)
 }

@@ -31,8 +31,8 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
 
-	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configgrpc"
 	"go.opentelemetry.io/collector/config/configtls"
 	"go.opentelemetry.io/collector/consumer/pdata"
@@ -40,115 +40,106 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	type args struct {
-		config Config
-	}
 	tests := []struct {
 		name    string
-		args    args
+		config  Config
 		wantErr bool
 	}{
 		{
 			name: "createExporter",
-			args: args{
-				config: Config{
-					GRPCClientSettings: configgrpc.GRPCClientSettings{
-						Headers:     nil,
-						Endpoint:    "foo.bar",
-						Compression: "",
-						TLSSetting: configtls.TLSClientSetting{
-							Insecure: true,
-						},
-						Keepalive: nil,
+			config: Config{
+				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
+				GRPCClientSettings: configgrpc.GRPCClientSettings{
+					Headers:     nil,
+					Endpoint:    "foo.bar",
+					Compression: "",
+					TLSSetting: configtls.TLSClientSetting{
+						Insecure: true,
 					},
+					Keepalive: nil,
 				},
 			},
 		},
 		{
 			name: "createExporterWithHeaders",
-			args: args{
-				config: Config{
-					GRPCClientSettings: configgrpc.GRPCClientSettings{
-						Headers:     map[string]string{"extra-header": "header-value"},
-						Endpoint:    "foo.bar",
-						Compression: "",
-						Keepalive:   nil,
-					},
+			config: Config{
+				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
+				GRPCClientSettings: configgrpc.GRPCClientSettings{
+					Headers:     map[string]string{"extra-header": "header-value"},
+					Endpoint:    "foo.bar",
+					Compression: "",
+					Keepalive:   nil,
 				},
 			},
 		},
 		{
 			name: "createBasicSecureExporter",
-			args: args{
-				config: Config{
-					GRPCClientSettings: configgrpc.GRPCClientSettings{
-						Headers:     nil,
-						Endpoint:    "foo.bar",
-						Compression: "",
-						Keepalive:   nil,
-					},
+			config: Config{
+				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
+				GRPCClientSettings: configgrpc.GRPCClientSettings{
+					Headers:     nil,
+					Endpoint:    "foo.bar",
+					Compression: "",
+					Keepalive:   nil,
 				},
 			},
 		},
 		{
 			name: "createSecureExporterWithClientTLS",
-			args: args{
-				config: Config{
-					GRPCClientSettings: configgrpc.GRPCClientSettings{
-						Headers:     nil,
-						Endpoint:    "foo.bar",
-						Compression: "",
-						TLSSetting: configtls.TLSClientSetting{
-							TLSSetting: configtls.TLSSetting{
-								CAFile: "testdata/test_cert.pem",
-							},
-							Insecure: false,
+			config: Config{
+				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
+				GRPCClientSettings: configgrpc.GRPCClientSettings{
+					Headers:     nil,
+					Endpoint:    "foo.bar",
+					Compression: "",
+					TLSSetting: configtls.TLSClientSetting{
+						TLSSetting: configtls.TLSSetting{
+							CAFile: "testdata/test_cert.pem",
 						},
-						Keepalive: nil,
+						Insecure: false,
 					},
+					Keepalive: nil,
 				},
 			},
 		},
 		{
 			name: "createSecureExporterWithKeepAlive",
-			args: args{
-				config: Config{
-					GRPCClientSettings: configgrpc.GRPCClientSettings{
-						Headers:     nil,
-						Endpoint:    "foo.bar",
-						Compression: "",
-						TLSSetting: configtls.TLSClientSetting{
-							TLSSetting: configtls.TLSSetting{
-								CAFile: "testdata/test_cert.pem",
-							},
-							Insecure:   false,
-							ServerName: "",
+			config: Config{
+				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
+				GRPCClientSettings: configgrpc.GRPCClientSettings{
+					Headers:     nil,
+					Endpoint:    "foo.bar",
+					Compression: "",
+					TLSSetting: configtls.TLSClientSetting{
+						TLSSetting: configtls.TLSSetting{
+							CAFile: "testdata/test_cert.pem",
 						},
-						Keepalive: &configgrpc.KeepaliveClientConfig{
-							Time:                0,
-							Timeout:             0,
-							PermitWithoutStream: false,
-						},
+						Insecure:   false,
+						ServerName: "",
+					},
+					Keepalive: &configgrpc.KeepaliveClientConfig{
+						Time:                0,
+						Timeout:             0,
+						PermitWithoutStream: false,
 					},
 				},
 			},
 		},
 		{
 			name: "createSecureExporterWithMissingFile",
-			args: args{
-				config: Config{
-					GRPCClientSettings: configgrpc.GRPCClientSettings{
-						Headers:     nil,
-						Endpoint:    "foo.bar",
-						Compression: "",
-						TLSSetting: configtls.TLSClientSetting{
-							TLSSetting: configtls.TLSSetting{
-								CAFile: "testdata/test_cert_missing.pem",
-							},
-							Insecure: false,
+			config: Config{
+				ExporterSettings: config.NewExporterSettings(config.NewID(typeStr)),
+				GRPCClientSettings: configgrpc.GRPCClientSettings{
+					Headers:     nil,
+					Endpoint:    "foo.bar",
+					Compression: "",
+					TLSSetting: configtls.TLSClientSetting{
+						TLSSetting: configtls.TLSSetting{
+							CAFile: "testdata/test_cert_missing.pem",
 						},
-						Keepalive: nil,
+						Insecure: false,
 					},
+					Keepalive: nil,
 				},
 			},
 			wantErr: true,
@@ -156,17 +147,22 @@ func TestNew(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := newTraceExporter(&tt.args.config, zap.NewNop())
-			if (err != nil) != tt.wantErr {
-				t.Errorf("newTraceExporter() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got == nil {
+			got, err := newTracesExporter(&tt.config, zap.NewNop())
+			assert.NoError(t, err)
+			assert.NotNil(t, got)
+			t.Cleanup(func() {
+				require.NoError(t, got.Shutdown(context.Background()))
+			})
+
+			err = got.Start(context.Background(), componenttest.NewNopHost())
+			if tt.wantErr {
+				assert.Error(t, err)
 				return
 			}
 
+			require.NoError(t, err)
 			// This is expected to fail.
-			err = got.ConsumeTraces(context.Background(), testdata.GenerateTraceDataNoLibraries())
+			err = got.ConsumeTraces(context.Background(), testdata.GenerateTracesNoLibraries())
 			assert.Error(t, err)
 		})
 	}
@@ -226,20 +222,17 @@ func TestMutualTLS(t *testing.T) {
 			ServerName: "localhost",
 		},
 	}
-	exporter, err := factory.CreateTracesExporter(context.Background(), component.ExporterCreateParams{Logger: zap.NewNop()}, cfg)
+	exporter, err := factory.CreateTracesExporter(context.Background(), componenttest.NewNopExporterCreateSettings(), cfg)
 	require.NoError(t, err)
-	err = exporter.Start(context.Background(), nil)
+	err = exporter.Start(context.Background(), componenttest.NewNopHost())
 	require.NoError(t, err)
-	defer exporter.Shutdown(context.Background())
+	t.Cleanup(func() { require.NoError(t, exporter.Shutdown(context.Background())) })
 
 	traceID := pdata.NewTraceID([16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15})
 	spanID := pdata.NewSpanID([8]byte{0, 1, 2, 3, 4, 5, 6, 7})
 
 	td := pdata.NewTraces()
-	td.ResourceSpans().Resize(1)
-	td.ResourceSpans().At(0).InstrumentationLibrarySpans().Resize(1)
-	td.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0).Spans().Resize(1)
-	span := td.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0).Spans().At(0)
+	span := td.ResourceSpans().AppendEmpty().InstrumentationLibrarySpans().AppendEmpty().Spans().AppendEmpty()
 	span.SetTraceID(traceID)
 	span.SetSpanID(spanID)
 
@@ -264,9 +257,18 @@ func TestConnectionStateChange(t *testing.T) {
 	}
 	sender := &protoGRPCSender{
 		logger:                    zap.NewNop(),
-		stopCh:                    make(chan (struct{})),
+		stopCh:                    make(chan struct{}),
 		conn:                      sr,
 		connStateReporterInterval: 10 * time.Millisecond,
+		clientSettings: &configgrpc.GRPCClientSettings{
+			Headers:     nil,
+			Endpoint:    "foo.bar",
+			Compression: "",
+			TLSSetting: configtls.TLSClientSetting{
+				Insecure: true,
+			},
+			Keepalive: nil,
+		},
 	}
 
 	wg.Add(1)
@@ -275,8 +277,20 @@ func TestConnectionStateChange(t *testing.T) {
 		wg.Done()
 	})
 
-	sender.start(context.Background(), componenttest.NewNopHost())
-	defer sender.shutdown(context.Background())
+	done := make(chan struct{})
+	go func() {
+		sender.startConnectionStatusReporter()
+		done <- struct{}{}
+	}()
+
+	t.Cleanup(func() {
+		// set the stopped flag, and wait for statusReporter to finish and signal back
+		sender.stopLock.Lock()
+		sender.stopped = true
+		sender.stopLock.Unlock()
+		<-done
+	})
+
 	wg.Wait() // wait for the initial state to be propagated
 
 	// test
@@ -295,9 +309,18 @@ func TestConnectionReporterEndsOnStopped(t *testing.T) {
 
 	sender := &protoGRPCSender{
 		logger:                    zap.NewNop(),
-		stopCh:                    make(chan (struct{})),
+		stopCh:                    make(chan struct{}),
 		conn:                      sr,
 		connStateReporterInterval: 10 * time.Millisecond,
+		clientSettings: &configgrpc.GRPCClientSettings{
+			Headers:     nil,
+			Endpoint:    "foo.bar",
+			Compression: "",
+			TLSSetting: configtls.TLSClientSetting{
+				Insecure: true,
+			},
+			Keepalive: nil,
+		},
 	}
 
 	wg := sync.WaitGroup{}

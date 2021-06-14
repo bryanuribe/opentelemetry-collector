@@ -22,13 +22,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.opencensus.io/stats"
 	"go.uber.org/zap"
 
 	"go.opentelemetry.io/collector/config/configtelemetry"
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/obsreport"
-	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/processor/memorylimiter/internal/iruntime"
 )
 
@@ -78,7 +76,6 @@ type memoryLimiter struct {
 	readMemStatsFn func(m *runtime.MemStats)
 
 	// Fields used for logging.
-	procName               string
 	logger                 *zap.Logger
 	configMismatchedLogged bool
 
@@ -116,11 +113,10 @@ func newMemoryLimiter(logger *zap.Logger, cfg *Config) (*memoryLimiter, error) {
 		ballastSize:    ballastSize,
 		ticker:         time.NewTicker(cfg.CheckInterval),
 		readMemStatsFn: runtime.ReadMemStats,
-		procName:       cfg.Name(),
 		logger:         logger,
 		obsrep: obsreport.NewProcessor(obsreport.ProcessorSettings{
-			Level:         configtelemetry.GetMetricsLevelFlagValue(),
-			ProcessorName: cfg.Name(),
+			Level:       configtelemetry.GetMetricsLevelFlagValue(),
+			ProcessorID: cfg.ID(),
 		}),
 	}
 
@@ -155,11 +151,6 @@ func (ml *memoryLimiter) shutdown(context.Context) error {
 func (ml *memoryLimiter) ProcessTraces(ctx context.Context, td pdata.Traces) (pdata.Traces, error) {
 	numSpans := td.SpanCount()
 	if ml.forcingDrop() {
-		stats.Record(
-			ctx,
-			processor.StatDroppedSpanCount.M(int64(numSpans)),
-			processor.StatTraceBatchesDroppedCount.M(1))
-
 		// TODO: actually to be 100% sure that this is "refused" and not "dropped"
 		// 	it is necessary to check the pipeline to see if this is directly connected
 		// 	to a receiver (ie.: a receiver is on the call stack). For now it

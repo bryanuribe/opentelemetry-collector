@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"go.opentelemetry.io/collector/config/configmodels"
+	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configtelemetry"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/consumertest"
@@ -111,20 +111,17 @@ func TestMetricsMemoryPressureResponse(t *testing.T) {
 			ms.Alloc = currentMemAlloc
 		},
 		obsrep: obsreport.NewProcessor(obsreport.ProcessorSettings{
-			Level:         configtelemetry.LevelNone,
-			ProcessorName: "",
+			Level:       configtelemetry.LevelNone,
+			ProcessorID: config.NewID(typeStr),
 		}),
 
 		logger: zap.NewNop(),
 	}
 	mp, err := processorhelper.NewMetricsProcessor(
 		&Config{
-			ProcessorSettings: configmodels.ProcessorSettings{
-				TypeVal: typeStr,
-				NameVal: typeStr,
-			},
+			ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
 		},
-		consumertest.NewMetricsNop(),
+		consumertest.NewNop(),
 		ml,
 		processorhelper.WithCapabilities(processorCapabilities),
 		processorhelper.WithShutdown(ml.shutdown))
@@ -186,19 +183,16 @@ func TestTraceMemoryPressureResponse(t *testing.T) {
 			ms.Alloc = currentMemAlloc
 		},
 		obsrep: obsreport.NewProcessor(obsreport.ProcessorSettings{
-			Level:         configtelemetry.LevelNone,
-			ProcessorName: "",
+			Level:       configtelemetry.LevelNone,
+			ProcessorID: config.NewID(typeStr),
 		}),
 		logger: zap.NewNop(),
 	}
-	tp, err := processorhelper.NewTraceProcessor(
+	tp, err := processorhelper.NewTracesProcessor(
 		&Config{
-			ProcessorSettings: configmodels.ProcessorSettings{
-				TypeVal: typeStr,
-				NameVal: typeStr,
-			},
+			ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
 		},
-		consumertest.NewTracesNop(),
+		consumertest.NewNop(),
 		ml,
 		processorhelper.WithCapabilities(processorCapabilities),
 		processorhelper.WithShutdown(ml.shutdown))
@@ -260,19 +254,16 @@ func TestLogMemoryPressureResponse(t *testing.T) {
 			ms.Alloc = currentMemAlloc
 		},
 		obsrep: obsreport.NewProcessor(obsreport.ProcessorSettings{
-			Level:         configtelemetry.LevelNone,
-			ProcessorName: "",
+			Level:       configtelemetry.LevelNone,
+			ProcessorID: config.NewID(typeStr),
 		}),
 		logger: zap.NewNop(),
 	}
 	lp, err := processorhelper.NewLogsProcessor(
 		&Config{
-			ProcessorSettings: configmodels.ProcessorSettings{
-				TypeVal: typeStr,
-				NameVal: typeStr,
-			},
+			ProcessorSettings: config.NewProcessorSettings(config.NewID(typeStr)),
 		},
-		consumertest.NewLogsNop(),
+		consumertest.NewNop(),
 		ml,
 		processorhelper.WithCapabilities(processorCapabilities),
 		processorhelper.WithShutdown(ml.shutdown))

@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/consumer/pdata"
+	"go.opentelemetry.io/collector/internal/idutils"
 	"go.opentelemetry.io/collector/internal/testdata"
 	"go.opentelemetry.io/collector/translator/conventions"
 	tracetranslator "go.opentelemetry.io/collector/translator/trace"
@@ -192,7 +193,7 @@ func TestProtoBatchToInternalTraces(t *testing.T) {
 		{
 			name: "empty",
 			jb:   model.Batch{},
-			td:   testdata.GenerateTraceDataEmpty(),
+			td:   pdata.NewTraces(),
 		},
 
 		{
@@ -200,7 +201,7 @@ func TestProtoBatchToInternalTraces(t *testing.T) {
 			jb: model.Batch{
 				Process: generateProtoProcess(),
 			},
-			td: generateTraceDataResourceOnly(),
+			td: generateTracesResourceOnly(),
 		},
 
 		{
@@ -210,7 +211,7 @@ func TestProtoBatchToInternalTraces(t *testing.T) {
 					ServiceName: tracetranslator.ResourceNoServiceName,
 				},
 			},
-			td: generateTraceDataResourceOnlyWithNoAttrs(),
+			td: generateTracesResourceOnlyWithNoAttrs(),
 		},
 
 		{
@@ -223,7 +224,7 @@ func TestProtoBatchToInternalTraces(t *testing.T) {
 					generateProtoSpanWithTraceState(),
 				},
 			},
-			td: generateTraceDataOneSpanNoResourceWithTraceState(),
+			td: generateTracesOneSpanNoResourceWithTraceState(),
 		},
 		{
 			name: "two-spans-child-parent",
@@ -236,7 +237,7 @@ func TestProtoBatchToInternalTraces(t *testing.T) {
 					generateProtoChildSpan(),
 				},
 			},
-			td: generateTraceDataTwoSpansChildParent(),
+			td: generateTracesTwoSpansChildParent(),
 		},
 
 		{
@@ -250,7 +251,7 @@ func TestProtoBatchToInternalTraces(t *testing.T) {
 					generateProtoFollowerSpan(),
 				},
 			},
-			td: generateTraceDataTwoSpansWithFollower(),
+			td: generateTracesTwoSpansWithFollower(),
 		},
 	}
 
@@ -303,7 +304,7 @@ func TestProtoBatchToInternalTracesWithTwoLibraries(t *testing.T) {
 			},
 		},
 	}
-	expected := generateTraceDataTwoSpansFromTwoLibraries()
+	expected := generateTracesTwoSpansFromTwoLibraries()
 	library1Span := expected.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0)
 	library2Span := expected.ResourceSpans().At(0).InstrumentationLibrarySpans().At(1)
 
@@ -382,7 +383,7 @@ func TestSetInternalSpanStatus(t *testing.T) {
 		{
 			name: "http.status_code tag is set as string",
 			attrs: pdata.NewAttributeMap().InitFromMap(map[string]pdata.AttributeValue{
-				tracetranslator.TagHTTPStatusCode: pdata.NewAttributeValueString("404"),
+				conventions.AttributeHTTPStatusCode: pdata.NewAttributeValueString("404"),
 			}),
 			status:           errorStatus,
 			attrsModifiedLen: 1,
@@ -390,9 +391,9 @@ func TestSetInternalSpanStatus(t *testing.T) {
 		{
 			name: "http.status_code, http.status_message and error tags are set",
 			attrs: pdata.NewAttributeMap().InitFromMap(map[string]pdata.AttributeValue{
-				tracetranslator.TagError:          pdata.NewAttributeValueBool(true),
-				tracetranslator.TagHTTPStatusCode: pdata.NewAttributeValueInt(404),
-				tracetranslator.TagHTTPStatusMsg:  pdata.NewAttributeValueString("HTTP 404: Not Found"),
+				tracetranslator.TagError:            pdata.NewAttributeValueBool(true),
+				conventions.AttributeHTTPStatusCode: pdata.NewAttributeValueInt(404),
+				tracetranslator.TagHTTPStatusMsg:    pdata.NewAttributeValueString("HTTP 404: Not Found"),
 			}),
 			status:           errorStatusWith404Message,
 			attrsModifiedLen: 2,
@@ -400,9 +401,9 @@ func TestSetInternalSpanStatus(t *testing.T) {
 		{
 			name: "status.code has precedence over http.status_code.",
 			attrs: pdata.NewAttributeMap().InitFromMap(map[string]pdata.AttributeValue{
-				tracetranslator.TagStatusCode:     pdata.NewAttributeValueInt(1),
-				tracetranslator.TagHTTPStatusCode: pdata.NewAttributeValueInt(500),
-				tracetranslator.TagHTTPStatusMsg:  pdata.NewAttributeValueString("Server Error"),
+				tracetranslator.TagStatusCode:       pdata.NewAttributeValueInt(1),
+				conventions.AttributeHTTPStatusCode: pdata.NewAttributeValueInt(500),
+				tracetranslator.TagHTTPStatusMsg:    pdata.NewAttributeValueString("Server Error"),
 			}),
 			status:           okStatus,
 			attrsModifiedLen: 2,
@@ -410,8 +411,8 @@ func TestSetInternalSpanStatus(t *testing.T) {
 		{
 			name: "Ignore http.status_code == 200 if error set to true.",
 			attrs: pdata.NewAttributeMap().InitFromMap(map[string]pdata.AttributeValue{
-				tracetranslator.TagError:          pdata.NewAttributeValueBool(true),
-				tracetranslator.TagHTTPStatusCode: pdata.NewAttributeValueInt(200),
+				tracetranslator.TagError:            pdata.NewAttributeValueBool(true),
+				conventions.AttributeHTTPStatusCode: pdata.NewAttributeValueInt(200),
 			}),
 			status:           errorStatus,
 			attrsModifiedLen: 1,
@@ -448,11 +449,11 @@ func TestProtoBatchesToInternalTraces(t *testing.T) {
 		},
 	}
 
-	expected := generateTraceDataOneSpanNoResource()
-	resource := generateTraceDataResourceOnly().ResourceSpans().At(0).Resource()
+	expected := generateTracesOneSpanNoResource()
+	resource := generateTracesResourceOnly().ResourceSpans().At(0).Resource()
 	resource.CopyTo(expected.ResourceSpans().At(0).Resource())
 	expected.ResourceSpans().Resize(2)
-	twoSpans := generateTraceDataTwoSpansChildParent().ResourceSpans().At(0)
+	twoSpans := generateTracesTwoSpansChildParent().ResourceSpans().At(0)
 	twoSpans.CopyTo(expected.ResourceSpans().At(1))
 
 	got := ProtoBatchesToInternalTraces(batches)
@@ -466,27 +467,27 @@ func TestJSpanKindToInternal(t *testing.T) {
 	}{
 		{
 			jSpanKind:    "client",
-			otlpSpanKind: pdata.SpanKindCLIENT,
+			otlpSpanKind: pdata.SpanKindClient,
 		},
 		{
 			jSpanKind:    "server",
-			otlpSpanKind: pdata.SpanKindSERVER,
+			otlpSpanKind: pdata.SpanKindServer,
 		},
 		{
 			jSpanKind:    "producer",
-			otlpSpanKind: pdata.SpanKindPRODUCER,
+			otlpSpanKind: pdata.SpanKindProducer,
 		},
 		{
 			jSpanKind:    "consumer",
-			otlpSpanKind: pdata.SpanKindCONSUMER,
+			otlpSpanKind: pdata.SpanKindConsumer,
 		},
 		{
 			jSpanKind:    "internal",
-			otlpSpanKind: pdata.SpanKindINTERNAL,
+			otlpSpanKind: pdata.SpanKindInternal,
 		},
 		{
 			jSpanKind:    "all-others",
-			otlpSpanKind: pdata.SpanKindUNSPECIFIED,
+			otlpSpanKind: pdata.SpanKindUnspecified,
 		},
 	}
 
@@ -497,16 +498,16 @@ func TestJSpanKindToInternal(t *testing.T) {
 	}
 }
 
-func generateTraceDataResourceOnly() pdata.Traces {
-	td := testdata.GenerateTraceDataOneEmptyResourceSpans()
+func generateTracesResourceOnly() pdata.Traces {
+	td := testdata.GenerateTracesOneEmptyResourceSpans()
 	rs := td.ResourceSpans().At(0).Resource()
 	rs.Attributes().InsertString(conventions.AttributeServiceName, "service-1")
 	rs.Attributes().InsertInt("int-attr-1", 123)
 	return td
 }
 
-func generateTraceDataResourceOnlyWithNoAttrs() pdata.Traces {
-	td := testdata.GenerateTraceDataOneEmptyResourceSpans()
+func generateTracesResourceOnlyWithNoAttrs() pdata.Traces {
+	td := testdata.GenerateTracesOneEmptyResourceSpans()
 	td.ResourceSpans().At(0).Resource().Attributes().InitFromMap(map[string]pdata.AttributeValue{})
 	return td
 }
@@ -524,17 +525,17 @@ func generateProtoProcess() *model.Process {
 	}
 }
 
-func generateTraceDataOneSpanNoResource() pdata.Traces {
-	td := testdata.GenerateTraceDataOneSpanNoResource()
+func generateTracesOneSpanNoResource() pdata.Traces {
+	td := testdata.GenerateTracesOneSpanNoResource()
 	span := td.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0).Spans().At(0)
 	span.SetSpanID(pdata.NewSpanID([8]byte{0xAF, 0xAE, 0xAD, 0xAC, 0xAB, 0xAA, 0xA9, 0xA8}))
 	span.SetTraceID(pdata.NewTraceID(
 		[16]byte{0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF, 0x80}))
 	span.SetDroppedAttributesCount(0)
 	span.SetDroppedEventsCount(0)
-	span.SetStartTime(testSpanStartTimestamp)
-	span.SetEndTime(testSpanEndTimestamp)
-	span.SetKind(pdata.SpanKindCLIENT)
+	span.SetStartTimestamp(testSpanStartTimestamp)
+	span.SetEndTimestamp(testSpanEndTimestamp)
+	span.SetKind(pdata.SpanKindClient)
 	span.Events().At(0).SetTimestamp(testSpanEventTimestamp)
 	span.Events().At(0).SetDroppedAttributesCount(0)
 	span.Events().At(0).SetName("event-with-attr")
@@ -545,8 +546,8 @@ func generateTraceDataOneSpanNoResource() pdata.Traces {
 	return td
 }
 
-func generateTraceDataWithLibraryInfo() pdata.Traces {
-	td := generateTraceDataOneSpanNoResource()
+func generateTracesWithLibraryInfo() pdata.Traces {
+	td := generateTracesOneSpanNoResource()
 	rs0 := td.ResourceSpans().At(0)
 	rs0ils0 := rs0.InstrumentationLibrarySpans().At(0)
 	rs0ils0.InstrumentationLibrary().SetName("io.opentelemetry.test")
@@ -554,8 +555,8 @@ func generateTraceDataWithLibraryInfo() pdata.Traces {
 	return td
 }
 
-func generateTraceDataOneSpanNoResourceWithTraceState() pdata.Traces {
-	td := generateTraceDataOneSpanNoResource()
+func generateTracesOneSpanNoResourceWithTraceState() pdata.Traces {
+	td := generateTracesOneSpanNoResource()
 	span := td.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0).Spans().At(0)
 	span.SetTraceState("lasterror=f39cd56cc44274fd5abd07ef1164246d10ce2955")
 	return td
@@ -706,8 +707,8 @@ func generateProtoSpanWithTraceState() *model.Span {
 	}
 }
 
-func generateTraceDataTwoSpansChildParent() pdata.Traces {
-	td := generateTraceDataOneSpanNoResource()
+func generateTracesTwoSpansChildParent() pdata.Traces {
+	td := generateTracesOneSpanNoResource()
 	spans := td.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0).Spans()
 	spans.Resize(2)
 
@@ -715,13 +716,13 @@ func generateTraceDataTwoSpansChildParent() pdata.Traces {
 	span.SetName("operationB")
 	span.SetSpanID(pdata.NewSpanID([8]byte{0x1F, 0x1E, 0x1D, 0x1C, 0x1B, 0x1A, 0x19, 0x18}))
 	span.SetParentSpanID(spans.At(0).SpanID())
-	span.SetKind(pdata.SpanKindSERVER)
+	span.SetKind(pdata.SpanKindServer)
 	span.SetTraceID(spans.At(0).TraceID())
-	span.SetStartTime(spans.At(0).StartTime())
-	span.SetEndTime(spans.At(0).EndTime())
+	span.SetStartTimestamp(spans.At(0).StartTimestamp())
+	span.SetEndTimestamp(spans.At(0).EndTimestamp())
 	span.Status().SetCode(pdata.StatusCodeError)
 	span.Attributes().InitFromMap(map[string]pdata.AttributeValue{
-		tracetranslator.TagHTTPStatusCode: pdata.NewAttributeValueInt(404),
+		conventions.AttributeHTTPStatusCode: pdata.NewAttributeValueInt(404),
 	})
 
 	return td
@@ -740,7 +741,7 @@ func generateProtoChildSpan() *model.Span {
 		Duration:      testSpanEndTime.Sub(testSpanStartTime),
 		Tags: []model.KeyValue{
 			{
-				Key:    tracetranslator.TagHTTPStatusCode,
+				Key:    conventions.AttributeHTTPStatusCode,
 				VType:  model.ValueType_INT64,
 				VInt64: 404,
 			},
@@ -760,8 +761,8 @@ func generateProtoChildSpan() *model.Span {
 	}
 }
 
-func generateTraceDataTwoSpansWithFollower() pdata.Traces {
-	td := generateTraceDataOneSpanNoResource()
+func generateTracesTwoSpansWithFollower() pdata.Traces {
+	td := generateTracesOneSpanNoResource()
 	spans := td.ResourceSpans().At(0).InstrumentationLibrarySpans().At(0).Spans()
 	spans.Resize(2)
 
@@ -769,14 +770,14 @@ func generateTraceDataTwoSpansWithFollower() pdata.Traces {
 	span.SetName("operationC")
 	span.SetSpanID(pdata.NewSpanID([8]byte{0x1F, 0x1E, 0x1D, 0x1C, 0x1B, 0x1A, 0x19, 0x18}))
 	span.SetTraceID(spans.At(0).TraceID())
-	span.SetStartTime(spans.At(0).EndTime())
-	span.SetEndTime(spans.At(0).EndTime() + 1000000)
-	span.SetKind(pdata.SpanKindCONSUMER)
+	span.SetStartTimestamp(spans.At(0).EndTimestamp())
+	span.SetEndTimestamp(spans.At(0).EndTimestamp() + 1000000)
+	span.SetKind(pdata.SpanKindConsumer)
 	span.Status().SetCode(pdata.StatusCodeOk)
 	span.Status().SetMessage("status-ok")
-	span.Links().Resize(1)
-	span.Links().At(0).SetTraceID(span.TraceID())
-	span.Links().At(0).SetSpanID(spans.At(0).SpanID())
+	link := span.Links().AppendEmpty()
+	link.SetTraceID(span.TraceID())
+	link.SetSpanID(spans.At(0).SpanID())
 	return td
 }
 
@@ -833,8 +834,8 @@ func BenchmarkProtoBatchToInternalTraces(b *testing.B) {
 	}
 }
 
-func generateTraceDataTwoSpansFromTwoLibraries() pdata.Traces {
-	td := testdata.GenerateTraceDataOneEmptyResourceSpans()
+func generateTracesTwoSpansFromTwoLibraries() pdata.Traces {
+	td := testdata.GenerateTracesOneEmptyResourceSpans()
 
 	rs0 := td.ResourceSpans().At(0)
 	rs0.InstrumentationLibrarySpans().Resize(2)
@@ -842,24 +843,22 @@ func generateTraceDataTwoSpansFromTwoLibraries() pdata.Traces {
 	rs0ils0 := rs0.InstrumentationLibrarySpans().At(0)
 	rs0ils0.InstrumentationLibrary().SetName("library1")
 	rs0ils0.InstrumentationLibrary().SetVersion("0.42.0")
-	rs0ils0.Spans().Resize(1)
-	span1 := rs0ils0.Spans().At(0)
-	span1.SetTraceID(tracetranslator.UInt64ToTraceID(0, 0))
-	span1.SetSpanID(tracetranslator.UInt64ToSpanID(0))
+	span1 := rs0ils0.Spans().AppendEmpty()
+	span1.SetTraceID(idutils.UInt64ToTraceID(0, 0))
+	span1.SetSpanID(idutils.UInt64ToSpanID(0))
 	span1.SetName("operation1")
-	span1.SetStartTime(testSpanStartTimestamp)
-	span1.SetEndTime(testSpanEndTimestamp)
+	span1.SetStartTimestamp(testSpanStartTimestamp)
+	span1.SetEndTimestamp(testSpanEndTimestamp)
 
 	rs0ils1 := rs0.InstrumentationLibrarySpans().At(1)
 	rs0ils1.InstrumentationLibrary().SetName("library2")
 	rs0ils1.InstrumentationLibrary().SetVersion("0.42.0")
-	rs0ils1.Spans().Resize(1)
-	span2 := rs0ils1.Spans().At(0)
+	span2 := rs0ils1.Spans().AppendEmpty()
 	span2.SetTraceID(span1.TraceID())
 	span2.SetSpanID(span1.SpanID())
 	span2.SetName("operation2")
-	span2.SetStartTime(testSpanStartTimestamp)
-	span2.SetEndTime(testSpanEndTimestamp)
+	span2.SetStartTimestamp(testSpanStartTimestamp)
+	span2.SetEndTimestamp(testSpanEndTimestamp)
 
 	return td
 }

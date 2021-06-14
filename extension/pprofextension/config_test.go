@@ -22,7 +22,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config/configmodels"
+	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/config/confignet"
 	"go.opentelemetry.io/collector/config/configtest"
 )
 
@@ -32,27 +33,24 @@ func TestLoadConfig(t *testing.T) {
 
 	factory := NewFactory()
 	factories.Extensions[typeStr] = factory
-	cfg, err := configtest.LoadConfigFile(t, path.Join(".", "testdata", "config.yaml"), factories)
+	cfg, err := configtest.LoadConfigAndValidate(path.Join(".", "testdata", "config.yaml"), factories)
 
 	require.Nil(t, err)
 	require.NotNil(t, cfg)
 
-	ext0 := cfg.Extensions["pprof"]
+	ext0 := cfg.Extensions[config.NewID(typeStr)]
 	assert.Equal(t, factory.CreateDefaultConfig(), ext0)
 
-	ext1 := cfg.Extensions["pprof/1"]
+	ext1 := cfg.Extensions[config.NewIDWithName(typeStr, "1")]
 	assert.Equal(t,
 		&Config{
-			ExtensionSettings: configmodels.ExtensionSettings{
-				TypeVal: "pprof",
-				NameVal: "pprof/1",
-			},
-			Endpoint:             "0.0.0.0:1777",
+			ExtensionSettings:    config.NewExtensionSettings(config.NewIDWithName(typeStr, "1")),
+			TCPAddr:              confignet.TCPAddr{Endpoint: "0.0.0.0:1777"},
 			BlockProfileFraction: 3,
 			MutexProfileFraction: 5,
 		},
 		ext1)
 
 	assert.Equal(t, 1, len(cfg.Service.Extensions))
-	assert.Equal(t, "pprof/1", cfg.Service.Extensions[0])
+	assert.Equal(t, config.NewIDWithName(typeStr, "1"), cfg.Service.Extensions[0])
 }

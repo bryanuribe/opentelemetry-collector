@@ -29,22 +29,13 @@ var (
 	TestLogTimestamp = pdata.TimestampFromTime(TestLogTime)
 )
 
-func GenerateLogDataEmpty() pdata.Logs {
+func GenerateLogsOneEmptyResourceLogs() pdata.Logs {
 	ld := pdata.NewLogs()
+	ld.ResourceLogs().AppendEmpty()
 	return ld
 }
 
-func generateLogOtlpEmpty() *otlpcollectorlog.ExportLogsServiceRequest {
-	return &otlpcollectorlog.ExportLogsServiceRequest{}
-}
-
-func GenerateLogDataOneEmptyResourceLogs() pdata.Logs {
-	ld := GenerateLogDataEmpty()
-	ld.ResourceLogs().Resize(1)
-	return ld
-}
-
-func generateLogOtlpOneEmptyResourceLogs() *otlpcollectorlog.ExportLogsServiceRequest {
+func generateLogsOtlpOneEmptyResourceLogs() *otlpcollectorlog.ExportLogsServiceRequest {
 	return &otlpcollectorlog.ExportLogsServiceRequest{
 		ResourceLogs: []*otlplogs.ResourceLogs{
 			{},
@@ -52,10 +43,9 @@ func generateLogOtlpOneEmptyResourceLogs() *otlpcollectorlog.ExportLogsServiceRe
 	}
 }
 
-func GenerateLogDataNoLogRecords() pdata.Logs {
-	ld := GenerateLogDataOneEmptyResourceLogs()
-	rs0 := ld.ResourceLogs().At(0)
-	initResource1(rs0.Resource())
+func GenerateLogsNoLogRecords() pdata.Logs {
+	ld := GenerateLogsOneEmptyResourceLogs()
+	initResource1(ld.ResourceLogs().At(0).Resource())
 	return ld
 }
 
@@ -69,15 +59,14 @@ func generateLogOtlpNoLogRecords() *otlpcollectorlog.ExportLogsServiceRequest {
 	}
 }
 
-func GenerateLogDataOneEmptyLogs() pdata.Logs {
-	ld := GenerateLogDataNoLogRecords()
+func GenerateLogsOneEmptyLogRecord() pdata.Logs {
+	ld := GenerateLogsNoLogRecords()
 	rs0 := ld.ResourceLogs().At(0)
-	rs0.InstrumentationLibraryLogs().Resize(1)
-	rs0.InstrumentationLibraryLogs().At(0).Logs().Resize(1)
+	rs0.InstrumentationLibraryLogs().AppendEmpty().Logs().AppendEmpty()
 	return ld
 }
 
-func generateLogOtlpOneEmptyLogs() *otlpcollectorlog.ExportLogsServiceRequest {
+func generateLogsOtlpOneEmptyLogRecord() *otlpcollectorlog.ExportLogsServiceRequest {
 	return &otlpcollectorlog.ExportLogsServiceRequest{
 		ResourceLogs: []*otlplogs.ResourceLogs{
 			{
@@ -94,17 +83,14 @@ func generateLogOtlpOneEmptyLogs() *otlpcollectorlog.ExportLogsServiceRequest {
 	}
 }
 
-func GenerateLogDataOneLogNoResource() pdata.Logs {
-	ld := GenerateLogDataOneEmptyResourceLogs()
+func GenerateLogsOneLogRecordNoResource() pdata.Logs {
+	ld := GenerateLogsOneEmptyResourceLogs()
 	rs0 := ld.ResourceLogs().At(0)
-	rs0.InstrumentationLibraryLogs().Resize(1)
-	rs0.InstrumentationLibraryLogs().At(0).Logs().Resize(1)
-	rs0lr0 := rs0.InstrumentationLibraryLogs().At(0).Logs().At(0)
-	fillLogOne(rs0lr0)
+	fillLogOne(rs0.InstrumentationLibraryLogs().AppendEmpty().Logs().AppendEmpty())
 	return ld
 }
 
-func generateLogOtlpOneLogNoResource() *otlpcollectorlog.ExportLogsServiceRequest {
+func generateLogsOtlpOneLogRecordNoResource() *otlpcollectorlog.ExportLogsServiceRequest {
 	return &otlpcollectorlog.ExportLogsServiceRequest{
 		ResourceLogs: []*otlplogs.ResourceLogs{
 			{
@@ -120,17 +106,13 @@ func generateLogOtlpOneLogNoResource() *otlpcollectorlog.ExportLogsServiceReques
 	}
 }
 
-func GenerateLogDataOneLog() pdata.Logs {
-	ld := GenerateLogDataOneEmptyLogs()
-	rs0 := ld.ResourceLogs().At(0)
-	rs0.InstrumentationLibraryLogs().Resize(1)
-	rs0.InstrumentationLibraryLogs().At(0).Logs().Resize(1)
-	rs0lr0 := rs0.InstrumentationLibraryLogs().At(0).Logs().At(0)
-	fillLogOne(rs0lr0)
+func GenerateLogsOneLogRecord() pdata.Logs {
+	ld := GenerateLogsOneEmptyLogRecord()
+	fillLogOne(ld.ResourceLogs().At(0).InstrumentationLibraryLogs().At(0).Logs().At(0))
 	return ld
 }
 
-func generateLogOtlpOneLog() *otlpcollectorlog.ExportLogsServiceRequest {
+func generateLogsOtlpOneLogRecord() *otlpcollectorlog.ExportLogsServiceRequest {
 	return &otlpcollectorlog.ExportLogsServiceRequest{
 		ResourceLogs: []*otlplogs.ResourceLogs{
 			{
@@ -147,18 +129,15 @@ func generateLogOtlpOneLog() *otlpcollectorlog.ExportLogsServiceRequest {
 	}
 }
 
-func GenerateLogDataTwoLogsSameResource() pdata.Logs {
-	ld := GenerateLogDataOneEmptyLogs()
-	rs0 := ld.ResourceLogs().At(0)
-	rs0.InstrumentationLibraryLogs().Resize(1)
-	rs0.InstrumentationLibraryLogs().At(0).Logs().Resize(2)
-	fillLogOne(rs0.InstrumentationLibraryLogs().At(0).Logs().At(0))
-	fillLogTwo(rs0.InstrumentationLibraryLogs().At(0).Logs().At(1))
+func GenerateLogsTwoLogRecordsSameResource() pdata.Logs {
+	ld := GenerateLogsOneEmptyLogRecord()
+	logs := ld.ResourceLogs().At(0).InstrumentationLibraryLogs().At(0).Logs()
+	fillLogOne(logs.At(0))
+	fillLogTwo(logs.AppendEmpty())
 	return ld
 }
 
-// generateLogOtlpSameResourceTwologs returns the OTLP representation of the GenerateLogOtlpSameResourceTwologs.
-func generateLogOtlpSameResourceTwoLogs() *otlpcollectorlog.ExportLogsServiceRequest {
+func generateLogsOtlpTwoLogRecordsSameResource() *otlpcollectorlog.ExportLogsServiceRequest {
 	return &otlpcollectorlog.ExportLogsServiceRequest{
 		ResourceLogs: []*otlplogs.ResourceLogs{
 			{
@@ -176,24 +155,20 @@ func generateLogOtlpSameResourceTwoLogs() *otlpcollectorlog.ExportLogsServiceReq
 	}
 }
 
-func GenerateLogDataTwoLogsSameResourceOneDifferent() pdata.Logs {
+func GenerateLogsTwoLogRecordsSameResourceOneDifferent() pdata.Logs {
 	ld := pdata.NewLogs()
-	ld.ResourceLogs().Resize(2)
-	rl0 := ld.ResourceLogs().At(0)
+	rl0 := ld.ResourceLogs().AppendEmpty()
 	initResource1(rl0.Resource())
-	rl0.InstrumentationLibraryLogs().Resize(1)
-	rl0.InstrumentationLibraryLogs().At(0).Logs().Resize(2)
-	fillLogOne(rl0.InstrumentationLibraryLogs().At(0).Logs().At(0))
-	fillLogTwo(rl0.InstrumentationLibraryLogs().At(0).Logs().At(1))
-	rl1 := ld.ResourceLogs().At(1)
+	logs := rl0.InstrumentationLibraryLogs().AppendEmpty().Logs()
+	fillLogOne(logs.AppendEmpty())
+	fillLogTwo(logs.AppendEmpty())
+	rl1 := ld.ResourceLogs().AppendEmpty()
 	initResource2(rl1.Resource())
-	rl1.InstrumentationLibraryLogs().Resize(1)
-	rl1.InstrumentationLibraryLogs().At(0).Logs().Resize(1)
-	fillLogThree(rl1.InstrumentationLibraryLogs().At(0).Logs().At(0))
+	fillLogThree(rl1.InstrumentationLibraryLogs().AppendEmpty().Logs().AppendEmpty())
 	return ld
 }
 
-func generateLogOtlpTwoLogsSameResourceOneDifferent() *otlpcollectorlog.ExportLogsServiceRequest {
+func generateLogsOtlpTwoLogRecordsSameResourceOneDifferent() *otlpcollectorlog.ExportLogsServiceRequest {
 	return &otlpcollectorlog.ExportLogsServiceRequest{
 		ResourceLogs: []*otlplogs.ResourceLogs{
 			{
@@ -316,13 +291,12 @@ func generateOtlpLogThree() *otlplogs.LogRecord {
 	}
 }
 
-func GenerateLogDataManyLogsSameResource(count int) pdata.Logs {
-	ld := GenerateLogDataOneEmptyLogs()
-	rs0 := ld.ResourceLogs().At(0)
-	rs0.InstrumentationLibraryLogs().Resize(1)
-	rs0.InstrumentationLibraryLogs().At(0).Logs().Resize(count)
+func GenerateLogsManyLogRecordsSameResource(count int) pdata.Logs {
+	ld := GenerateLogsOneEmptyLogRecord()
+	logs := ld.ResourceLogs().At(0).InstrumentationLibraryLogs().At(0).Logs()
+	logs.Resize(count)
 	for i := 0; i < count; i++ {
-		l := rs0.InstrumentationLibraryLogs().At(0).Logs().At(i)
+		l := logs.At(i)
 		if i%2 == 0 {
 			fillLogOne(l)
 		} else {

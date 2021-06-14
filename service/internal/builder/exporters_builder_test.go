@@ -25,8 +25,8 @@ import (
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
+	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configgrpc"
-	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/config/configtest"
 	"go.opentelemetry.io/collector/exporter/opencensusexporter"
 	"go.opentelemetry.io/collector/internal/testcomponents"
@@ -38,13 +38,10 @@ func TestBuildExporters(t *testing.T) {
 
 	oceFactory := opencensusexporter.NewFactory()
 	factories.Exporters[oceFactory.Type()] = oceFactory
-	cfg := &configmodels.Config{
-		Exporters: map[string]configmodels.Exporter{
-			"opencensus": &opencensusexporter.Config{
-				ExporterSettings: configmodels.ExporterSettings{
-					NameVal: "opencensus",
-					TypeVal: "opencensus",
-				},
+	cfg := &config.Config{
+		Exporters: map[config.ComponentID]config.Exporter{
+			config.NewID("opencensus"): &opencensusexporter.Config{
+				ExporterSettings: config.NewExporterSettings(config.NewID("opencensus")),
 				GRPCClientSettings: configgrpc.GRPCClientSettings{
 					Endpoint: "0.0.0.0:12345",
 				},
@@ -52,27 +49,27 @@ func TestBuildExporters(t *testing.T) {
 			},
 		},
 
-		Service: configmodels.Service{
-			Pipelines: map[string]*configmodels.Pipeline{
+		Service: config.Service{
+			Pipelines: map[string]*config.Pipeline{
 				"trace": {
 					Name:      "trace",
-					InputType: configmodels.TracesDataType,
-					Exporters: []string{"opencensus"},
+					InputType: config.TracesDataType,
+					Exporters: []config.ComponentID{config.NewID("opencensus")},
 				},
 			},
 		},
 	}
 
-	exporters, err := BuildExporters(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, factories.Exporters)
+	exporters, err := BuildExporters(zap.NewNop(), component.DefaultBuildInfo(), cfg, factories.Exporters)
 
 	assert.NoError(t, err)
 	require.NotNil(t, exporters)
 
-	e1 := exporters[cfg.Exporters["opencensus"]]
+	e1 := exporters[cfg.Exporters[config.NewID("opencensus")]]
 
 	// Ensure exporter has its fields correctly populated.
 	require.NotNil(t, e1)
-	assert.NotNil(t, e1.getTraceExporter())
+	assert.NotNil(t, e1.getTracesExporter())
 	assert.Nil(t, e1.getMetricExporter())
 	assert.Nil(t, e1.getLogExporter())
 
@@ -92,16 +89,16 @@ func TestBuildExporters(t *testing.T) {
 	// This should result in creating an exporter that has none of consumption
 	// functions set.
 	delete(cfg.Service.Pipelines, "trace")
-	exporters, err = BuildExporters(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, factories.Exporters)
+	exporters, err = BuildExporters(zap.NewNop(), component.DefaultBuildInfo(), cfg, factories.Exporters)
 	assert.NotNil(t, exporters)
 	assert.NoError(t, err)
 
-	e1 = exporters[cfg.Exporters["opencensus"]]
+	e1 = exporters[cfg.Exporters[config.NewID("opencensus")]]
 
 	// Ensure exporter has its fields correctly populated, ie Trace Exporter and
 	// Metrics Exporter are nil.
 	require.NotNil(t, e1)
-	assert.Nil(t, e1.getTraceExporter())
+	assert.Nil(t, e1.getTracesExporter())
 	assert.Nil(t, e1.getMetricExporter())
 	assert.Nil(t, e1.getLogExporter())
 
@@ -112,38 +109,35 @@ func TestBuildExporters_BuildLogs(t *testing.T) {
 	factories, err := testcomponents.ExampleComponents()
 	assert.Nil(t, err)
 
-	cfg := &configmodels.Config{
-		Exporters: map[string]configmodels.Exporter{
-			"exampleexporter": &testcomponents.ExampleExporter{
-				ExporterSettings: configmodels.ExporterSettings{
-					NameVal: "exampleexporter",
-					TypeVal: "exampleexporter",
-				},
+	cfg := &config.Config{
+		Exporters: map[config.ComponentID]config.Exporter{
+			config.NewID("exampleexporter"): &testcomponents.ExampleExporter{
+				ExporterSettings: config.NewExporterSettings(config.NewID("exampleexporter")),
 			},
 		},
 
-		Service: configmodels.Service{
-			Pipelines: map[string]*configmodels.Pipeline{
+		Service: config.Service{
+			Pipelines: map[string]*config.Pipeline{
 				"logs": {
 					Name:      "logs",
 					InputType: "logs",
-					Exporters: []string{"exampleexporter"},
+					Exporters: []config.ComponentID{config.NewID("exampleexporter")},
 				},
 			},
 		},
 	}
 
-	exporters, err := BuildExporters(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, factories.Exporters)
+	exporters, err := BuildExporters(zap.NewNop(), component.DefaultBuildInfo(), cfg, factories.Exporters)
 
 	assert.NoError(t, err)
 	require.NotNil(t, exporters)
 
-	e1 := exporters[cfg.Exporters["exampleexporter"]]
+	e1 := exporters[cfg.Exporters[config.NewID("exampleexporter")]]
 
 	// Ensure exporter has its fields correctly populated.
 	require.NotNil(t, e1)
 	assert.NotNil(t, e1.getLogExporter())
-	assert.Nil(t, e1.getTraceExporter())
+	assert.Nil(t, e1.getTracesExporter())
 	assert.Nil(t, e1.getMetricExporter())
 
 	// Ensure it can be started.
@@ -158,32 +152,32 @@ func TestBuildExporters_BuildLogs(t *testing.T) {
 	// This should result in creating an exporter that has none of consumption
 	// functions set.
 	delete(cfg.Service.Pipelines, "logs")
-	exporters, err = BuildExporters(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, factories.Exporters)
+	exporters, err = BuildExporters(zap.NewNop(), component.DefaultBuildInfo(), cfg, factories.Exporters)
 	assert.NotNil(t, exporters)
 	assert.Nil(t, err)
 
-	e1 = exporters[cfg.Exporters["exampleexporter"]]
+	e1 = exporters[cfg.Exporters[config.NewID("exampleexporter")]]
 
 	// Ensure exporter has its fields correctly populated, ie Trace Exporter and
 	// Metrics Exporter are nil.
 	require.NotNil(t, e1)
-	assert.Nil(t, e1.getTraceExporter())
+	assert.Nil(t, e1.getTracesExporter())
 	assert.Nil(t, e1.getMetricExporter())
 	assert.Nil(t, e1.getLogExporter())
 }
 
 func TestBuildExporters_StartAll(t *testing.T) {
 	exporters := make(Exporters)
-	expCfg := &configmodels.ExporterSettings{}
+	expCfg := &config.ExporterSettings{}
 	traceExporter := &testcomponents.ExampleExporterConsumer{}
 	metricExporter := &testcomponents.ExampleExporterConsumer{}
 	logsExporter := &testcomponents.ExampleExporterConsumer{}
 	exporters[expCfg] = &builtExporter{
 		logger: zap.NewNop(),
-		expByDataType: map[configmodels.DataType]component.Exporter{
-			configmodels.TracesDataType:  traceExporter,
-			configmodels.MetricsDataType: metricExporter,
-			configmodels.LogsDataType:    logsExporter,
+		expByDataType: map[config.DataType]component.Exporter{
+			config.TracesDataType:  traceExporter,
+			config.MetricsDataType: metricExporter,
+			config.LogsDataType:    logsExporter,
 		},
 	}
 	assert.False(t, traceExporter.ExporterStarted)
@@ -199,16 +193,16 @@ func TestBuildExporters_StartAll(t *testing.T) {
 
 func TestBuildExporters_StopAll(t *testing.T) {
 	exporters := make(Exporters)
-	expCfg := &configmodels.ExporterSettings{}
+	expCfg := &config.ExporterSettings{}
 	traceExporter := &testcomponents.ExampleExporterConsumer{}
 	metricExporter := &testcomponents.ExampleExporterConsumer{}
 	logsExporter := &testcomponents.ExampleExporterConsumer{}
 	exporters[expCfg] = &builtExporter{
 		logger: zap.NewNop(),
-		expByDataType: map[configmodels.DataType]component.Exporter{
-			configmodels.TracesDataType:  traceExporter,
-			configmodels.MetricsDataType: metricExporter,
-			configmodels.LogsDataType:    logsExporter,
+		expByDataType: map[config.DataType]component.Exporter{
+			config.TracesDataType:  traceExporter,
+			config.MetricsDataType: metricExporter,
+			config.LogsDataType:    logsExporter,
 		},
 	}
 	assert.False(t, traceExporter.ExporterShutdown)
@@ -241,10 +235,10 @@ func TestBuildExporters_NotSupportedDataType(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.configFile, func(t *testing.T) {
 
-			cfg, err := configtest.LoadConfigFile(t, path.Join("testdata", test.configFile), factories)
+			cfg, err := configtest.LoadConfigAndValidate(path.Join("testdata", test.configFile), factories)
 			require.Nil(t, err)
 
-			exporters, err := BuildExporters(zap.NewNop(), component.DefaultApplicationStartInfo(), cfg, factories.Exporters)
+			exporters, err := BuildExporters(zap.NewNop(), component.DefaultBuildInfo(), cfg, factories.Exporters)
 			assert.Error(t, err)
 			assert.Zero(t, len(exporters))
 		})

@@ -17,39 +17,53 @@ package componenttest
 import (
 	"context"
 
+	"go.uber.org/zap"
+
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenthelper"
-	"go.opentelemetry.io/collector/config/configmodels"
+	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/consumer"
 )
+
+// NewNopReceiverCreateSettings returns a new nop settings for Create*Receiver functions.
+func NewNopReceiverCreateSettings() component.ReceiverCreateSettings {
+	return component.ReceiverCreateSettings{
+		Logger:    zap.NewNop(),
+		BuildInfo: component.DefaultBuildInfo(),
+	}
+}
+
+type nopReceiverConfig struct {
+	config.ReceiverSettings `mapstructure:",squash"` // squash ensures fields are correctly decoded in embedded struct
+}
 
 // nopReceiverFactory is factory for nopReceiver.
 type nopReceiverFactory struct{}
 
 var nopReceiverFactoryInstance = &nopReceiverFactory{}
 
-// NewNopReceiverFactory returns a component.ReceiverFactory that constructs nop exporters.
+// NewNopReceiverFactory returns a component.ReceiverFactory that constructs nop receivers.
 func NewNopReceiverFactory() component.ReceiverFactory {
 	return nopReceiverFactoryInstance
 }
 
 // Type gets the type of the Receiver config created by this factory.
-func (f *nopReceiverFactory) Type() configmodels.Type {
-	return "nop"
+func (f *nopReceiverFactory) Type() config.Type {
+	return config.NewID("nop").Type()
 }
 
 // CreateDefaultConfig creates the default configuration for the Receiver.
-func (f *nopReceiverFactory) CreateDefaultConfig() configmodels.Receiver {
-	return &configmodels.ReceiverSettings{
-		TypeVal: f.Type(),
+func (f *nopReceiverFactory) CreateDefaultConfig() config.Receiver {
+	return &nopReceiverConfig{
+		ReceiverSettings: config.NewReceiverSettings(config.NewID("nop")),
 	}
 }
 
 // CreateTracesReceiver implements component.ReceiverFactory interface.
 func (f *nopReceiverFactory) CreateTracesReceiver(
 	_ context.Context,
-	_ component.ReceiverCreateParams,
-	_ configmodels.Receiver,
+	_ component.ReceiverCreateSettings,
+	_ config.Receiver,
 	_ consumer.Traces,
 ) (component.TracesReceiver, error) {
 	return nopReceiverInstance, nil
@@ -58,25 +72,25 @@ func (f *nopReceiverFactory) CreateTracesReceiver(
 // CreateMetricsReceiver implements component.ReceiverFactory interface.
 func (f *nopReceiverFactory) CreateMetricsReceiver(
 	_ context.Context,
-	_ component.ReceiverCreateParams,
-	_ configmodels.Receiver,
+	_ component.ReceiverCreateSettings,
+	_ config.Receiver,
 	_ consumer.Metrics,
 ) (component.MetricsReceiver, error) {
 	return nopReceiverInstance, nil
 }
 
-// CreateMetricsReceiver implements component.ReceiverFactory interface.
+// CreateLogsReceiver implements component.ReceiverFactory interface.
 func (f *nopReceiverFactory) CreateLogsReceiver(
 	_ context.Context,
-	_ component.ReceiverCreateParams,
-	_ configmodels.Receiver,
+	_ component.ReceiverCreateSettings,
+	_ config.Receiver,
 	_ consumer.Logs,
 ) (component.LogsReceiver, error) {
 	return nopReceiverInstance, nil
 }
 
 var nopReceiverInstance = &nopReceiver{
-	Component: componenthelper.NewComponent(componenthelper.DefaultComponentSettings()),
+	Component: componenthelper.New(),
 }
 
 // nopReceiver stores consumed traces and metrics for testing purposes.

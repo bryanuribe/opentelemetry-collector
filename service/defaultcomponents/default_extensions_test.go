@@ -20,11 +20,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
-	"go.opentelemetry.io/collector/config/configmodels"
+	"go.opentelemetry.io/collector/config"
+	"go.opentelemetry.io/collector/extension/bearertokenauthextension"
 	"go.opentelemetry.io/collector/extension/healthcheckextension"
 	"go.opentelemetry.io/collector/extension/pprofextension"
 	"go.opentelemetry.io/collector/extension/zpagesextension"
@@ -37,50 +37,57 @@ func TestDefaultExtensions(t *testing.T) {
 
 	extFactories := allFactories.Extensions
 	endpoint := testutil.GetAvailableLocalAddress(t)
-	port := testutil.GetAvailablePort(t)
 
 	tests := []struct {
-		extension   configmodels.Type
+		extension   config.Type
 		getConfigFn getExtensionConfigFn
 	}{
 		{
 			extension: "health_check",
-			getConfigFn: func() configmodels.Extension {
+			getConfigFn: func() config.Extension {
 				cfg := extFactories["health_check"].CreateDefaultConfig().(*healthcheckextension.Config)
-				cfg.Port = port
+				cfg.TCPAddr.Endpoint = endpoint
 				return cfg
 			},
 		},
 		{
 			extension: "pprof",
-			getConfigFn: func() configmodels.Extension {
+			getConfigFn: func() config.Extension {
 				cfg := extFactories["pprof"].CreateDefaultConfig().(*pprofextension.Config)
-				cfg.Endpoint = endpoint
+				cfg.TCPAddr.Endpoint = endpoint
 				return cfg
 			},
 		},
 		{
 			extension: "zpages",
-			getConfigFn: func() configmodels.Extension {
+			getConfigFn: func() config.Extension {
 				cfg := extFactories["zpages"].CreateDefaultConfig().(*zpagesextension.Config)
-				cfg.Endpoint = endpoint
+				cfg.TCPAddr.Endpoint = endpoint
 				return cfg
 			},
 		},
 		{
-			extension: "fluentbit",
+			extension: "bearertokenauth",
+			getConfigFn: func() config.Extension {
+				cfg := extFactories["bearertokenauth"].CreateDefaultConfig().(*bearertokenauthextension.Config)
+				cfg.BearerToken = "sometoken"
+				return cfg
+			},
 		},
 	}
 
-	assert.Equal(t, len(tests), len(extFactories))
+	// we have one more extension that we can't test here: the OIDC Auth extension requires
+	// an OIDC server to get the config from, and we don't want to spawn one here for this test.
+	assert.Equal(t, len(tests)+1, len(extFactories))
+
 	for _, tt := range tests {
 		t.Run(string(tt.extension), func(t *testing.T) {
 			factory, ok := extFactories[tt.extension]
 			require.True(t, ok)
 			assert.Equal(t, tt.extension, factory.Type())
-			assert.Equal(t, tt.extension, factory.CreateDefaultConfig().Type())
+			assert.Equal(t, config.NewID(tt.extension), factory.CreateDefaultConfig().ID())
 
-			verifyExtensionLifecycle(t, factory, nil)
+			verifyExtensionLifecycle(t, factory, tt.getConfigFn)
 		})
 	}
 }
@@ -88,7 +95,7 @@ func TestDefaultExtensions(t *testing.T) {
 // getExtensionConfigFn is used customize the configuration passed to the verification.
 // This is used to change ports or provide values required but not provided by the
 // default configuration.
-type getExtensionConfigFn func() configmodels.Extension
+type getExtensionConfigFn func() config.Extension
 
 // verifyExtensionLifecycle is used to test if an extension type can handle the typical
 // lifecycle of a component. The getConfigFn parameter only need to be specified if
@@ -96,21 +103,18 @@ type getExtensionConfigFn func() configmodels.Extension
 func verifyExtensionLifecycle(t *testing.T, factory component.ExtensionFactory, getConfigFn getExtensionConfigFn) {
 	ctx := context.Background()
 	host := newAssertNoErrorHost(t)
-	extCreateParams := component.ExtensionCreateParams{
-		Logger:               zap.NewNop(),
-		ApplicationStartInfo: component.DefaultApplicationStartInfo(),
-	}
+	extCreateSet := componenttest.NewNopExtensionCreateSettings()
 
 	if getConfigFn == nil {
 		getConfigFn = factory.CreateDefaultConfig
 	}
 
-	firstExt, err := factory.CreateExtension(ctx, extCreateParams, getConfigFn())
+	firstExt, err := factory.CreateExtension(ctx, extCreateSet, getConfigFn())
 	require.NoError(t, err)
 	require.NoError(t, firstExt.Start(ctx, host))
 	require.NoError(t, firstExt.Shutdown(ctx))
 
-	secondExt, err := factory.CreateExtension(ctx, extCreateParams, getConfigFn())
+	secondExt, err := factory.CreateExtension(ctx, extCreateSet, getConfigFn())
 	require.NoError(t, err)
 	require.NoError(t, secondExt.Start(ctx, host))
 	require.NoError(t, secondExt.Shutdown(ctx))
