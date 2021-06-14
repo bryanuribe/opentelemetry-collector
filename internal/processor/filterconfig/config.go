@@ -45,6 +45,8 @@ type MatchConfig struct {
 	Exclude *MatchProperties `mapstructure:"exclude"`
 }
 
+// Comment 
+
 // MatchProperties specifies the set of properties in a span/log to match
 // against and if the span/log should be included or excluded from the
 // processor. At least one of services (spans only), span/log names or
