@@ -30,6 +30,7 @@ type ApplicationStartInfo struct {
 	GitHash string
 }
 
+//comment 
 // DefaultApplicationStartInfo returns the default ApplicationStartInfo.
 func DefaultApplicationStartInfo() ApplicationStartInfo {
 	return ApplicationStartInfo{
