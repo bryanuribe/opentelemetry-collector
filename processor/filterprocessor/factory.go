@@ -28,7 +28,7 @@ const (
 	typeStr = "filter"
 )
 
-// comment
+// comment 2
 
 var processorCapabilities = component.ProcessorCapabilities{MutatesConsumedData: false}
 
