@@ -28,6 +28,8 @@ const (
 	typeStr = "filter"
 )
 
+// comment
+
 var processorCapabilities = component.ProcessorCapabilities{MutatesConsumedData: false}
 
 // NewFactory returns a new factory for the Filter processor.
