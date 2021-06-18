@@ -21,13 +21,16 @@ jobs:
         with: 
           path: ${{ github.head_ref }}
 
+      - name: Setup-environment
+        run: |
+          make install-tools
+          export GOPATH=$HOME/go
+          export PATH=$GOPATH/bin:$PATH
+
       - name: Generate-Compare-Check-apidiff
         run: |
           echo ::group::Generating apidiff states
           cd ${{ github.head_ref }}
-          make install-tools
-          export GOPATH=$HOME/go
-          export PATH=$GOPATH/bin:$PATH
           make apidiff-build
           cd ../${{ github.base_ref }}
           echo ::endgroup::
