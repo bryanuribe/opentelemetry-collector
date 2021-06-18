@@ -27,7 +27,6 @@ jobs:
       - name: Install Tools
         if: steps.tool-cache.outputs.cache-hit != 'true'
         run: | 
-          ls
           make install-tools
 
   Check-Compatibility:
