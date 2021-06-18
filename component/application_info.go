@@ -31,6 +31,7 @@ type ApplicationStartInfo struct {
 }
 
 //comment 
+//comment 
 // DefaultApplicationStartInfo returns the default ApplicationStartInfo.
 func DefaultApplicationStartInfo() ApplicationStartInfo {
 	return ApplicationStartInfo{
