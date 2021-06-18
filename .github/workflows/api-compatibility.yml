@@ -11,30 +11,11 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
-      - name: Setup Go
-        uses: actions/setup-go@v2.1.3
-        with:
-          go-version: 1.16
       - name: Setup Go Environment
         run: |
           echo "GOPATH=$(go env GOPATH)" >> $GITHUB_ENV
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
         shell: bash
-      - name: Cache Go
-        id: module-cache
-        uses: actions/cache@v2
-        env:
-          cache-name: cache-go-modules
-        with:
-          path: |
-            /home/runner/go/pkg/mod
-            /home/runner/.cache/go-build
-          key: go-pkg-mod-${{ runner.os }}-${{ hashFiles('**/go.mod', '**/go.sum') }}
-      - name: Install dependencies
-        if: steps.module-cache.outputs.cache-hit != 'true'
-        run: |
-          make gomoddownload
-          make gotestinstall
       - name: Cache Tools
         id: tool-cache
         uses: actions/cache@v2
