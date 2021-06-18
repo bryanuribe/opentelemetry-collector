@@ -23,6 +23,7 @@ jobs:
 
       - name: Setup-environment
         run: |
+          cd ${{ github.head_ref }}
           make install-tools
           export GOPATH=$HOME/go
           export PATH=$GOPATH/bin:$PATH
