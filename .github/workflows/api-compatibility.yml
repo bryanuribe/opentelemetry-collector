@@ -45,7 +45,9 @@ jobs:
           key: tools-${{ runner.os }}-${{ hashFiles('./internal/tools/go.mod', './cmd/mdatagen/go.mod', './cmd/mdatagen/*.go') }}
       - name: Install Tools
         if: steps.tool-cache.outputs.cache-hit != 'true'
-        run: make install-tools
+        run: |
+          ls
+          make install-tools
 
   Check-Compatibility:
     runs-on: macos-latest
