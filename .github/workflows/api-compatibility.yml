@@ -32,6 +32,7 @@ jobs:
 
   Check-Compatibility:
     runs-on: macos-latest
+    needs: [setup-environment]
     steps:
       - name: Checkout-Main
         uses: actions/checkout@v2
