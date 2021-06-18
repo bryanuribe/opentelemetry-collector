@@ -13,8 +13,8 @@ jobs:
         uses: actions/checkout@v2
       - name: Setup Go Environment
         run: |
-          echo "GOPATH=$(go env GOPATH)" >> $GITHUB_ENV
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          export GOPATH=$HOME/go
+          export PATH=$GOPATH/bin:$PATH
         shell: bash
       - name: Cache Tools
         id: tool-cache
@@ -46,8 +46,8 @@ jobs:
           
       - name: Setup Go Environment
         run: |
-          echo "GOPATH=$(go env GOPATH)" >> $GITHUB_ENV
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          export GOPATH=$HOME/go
+          export PATH=$GOPATH/bin:$PATH
           
       - name: Cache Tools
         id: tool-cache
