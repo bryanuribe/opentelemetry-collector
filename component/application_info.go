@@ -29,7 +29,7 @@ type ApplicationStartInfo struct {
 	// Git hash of the source code.
 	GitHash string
 }
-
+//comment
 //comment 
 //comment 
 // DefaultApplicationStartInfo returns the default ApplicationStartInfo.
