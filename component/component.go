@@ -22,6 +22,7 @@ import (
 	"go.opentelemetry.io/collector/config/configmodels"
 )
 //comment
+// comment
 // Component is either a receiver, exporter, processor or extension.
 type Component interface {
 	// Components lifecycle goes through the following phases:
