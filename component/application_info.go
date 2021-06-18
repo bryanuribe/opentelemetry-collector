@@ -29,7 +29,8 @@ type ApplicationStartInfo struct {
 	// Git hash of the source code.
 	GitHash string
 }
-/comment
+//commment
+//comment
 //comment
 //comment 
 //comment 
