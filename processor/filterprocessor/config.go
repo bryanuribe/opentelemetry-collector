@@ -25,6 +25,8 @@ type Config struct {
 	Metrics                        MetricFilters `mapstructure:"metrics"`
 }
 
+//comment
+
 // MetricFilter filters by Metric properties.
 type MetricFilters struct {
 	// Include match properties describe metrics that should be included in the Collector Service pipeline,
