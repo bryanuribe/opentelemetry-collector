@@ -5,33 +5,8 @@ on:
       - main
 
 jobs:
-
-  setup-environment:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v2
-      - name: Setup Go Environment
-        run: |
-          export GOPATH=$HOME/go
-          export PATH=$GOPATH/bin:$PATH
-        shell: bash
-      - name: Cache Tools
-        id: tool-cache
-        uses: actions/cache@v2
-        env:
-          cache-name: cache-tool-binaries
-        with:
-          path: /home/runner/go/bin
-          key: tools-${{ runner.os }}-${{ hashFiles('./internal/tools/go.mod', './cmd/mdatagen/go.mod', './cmd/mdatagen/*.go') }}
-      - name: Install Tools
-        if: steps.tool-cache.outputs.cache-hit != 'true'
-        run: | 
-          make install-tools
-
   Check-Compatibility:
     runs-on: macos-latest
-    needs: [setup-environment]
     steps:
       - name: Checkout-Main
         uses: actions/checkout@v2
@@ -43,25 +18,19 @@ jobs:
         uses: actions/checkout@v2 
         with: 
           path: ${{ github.head_ref }}
+
+      - name: Install-Tools
+        run: |
+          cd ${{ github.base_ref }}
+          make install-tools 
           
       - name: Setup Go Environment
         run: |
           export GOPATH=$HOME/go
           export PATH=$GOPATH/bin:$PATH
-          
-      - name: Cache Tools
-        id: tool-cache
-        uses: actions/cache@v2
-        env:
-          cache-name: cache-tool-binaries
-        with:
-          path: /home/runner/go/bin
-          key: tools-${{ runner.os }}-${{ hashFiles('./internal/tools/go.mod', './cmd/mdatagen/go.mod', './cmd/mdatagen/*.go') }}
-
+        
       - name: Generate-Compare-Check-apidiff
         run: |
-          export GOPATH=$HOME/go
-          export PATH=$GOPATH/bin:$PATH
           echo ::group::Generating apidiff states
           cd ${{ github.head_ref }}
           make apidiff-build
