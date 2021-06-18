@@ -60,6 +60,8 @@ jobs:
 
       - name: Generate-Compare-Check-apidiff
         run: |
+          export GOPATH=$HOME/go
+          export PATH=$GOPATH/bin:$PATH
           echo ::group::Generating apidiff states
           cd ${{ github.head_ref }}
           make apidiff-build
