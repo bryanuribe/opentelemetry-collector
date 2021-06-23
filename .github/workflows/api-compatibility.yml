@@ -26,12 +26,11 @@ jobs:
         run: | 
           cd ${{ github.head_ref }}
           ls
-          cd ../main/go.opentelemetry.io/collector/client
       
       - name: Setup Go Environment
         run: |
-          echo "GOPATH=$(go env GOPATH)" >> $GITHUB_ENV
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+          export GOPATH=$HOME/go
+          export PATH=$GOPATH/bin:$PATH
 
       - name: Install-Tools
         run: |
