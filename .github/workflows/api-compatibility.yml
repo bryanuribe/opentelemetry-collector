@@ -46,7 +46,7 @@ jobs:
           pwd
           cd ${{ github.head_ref }}
           pwd
-          make apidiff-compare-GA input_dir="./internal/data/apidiff pkg_dir="../${{ github.base_ref }}""
+          make apidiff-compare-GA pkg_dir="../${{ github.base_ref }}""
       
       # Fail GitHub Action if there are incompatible changes
       - name: Check-apidiff-States
@@ -54,4 +54,4 @@ jobs:
           pwd
           cd ${{ github.head_ref }}
           pwd
-          make apidiff-check input_dir="./internal/data/apidiff pkg_dir="../${{ github.base_ref }}""
+          make apidiff-check pkg_dir="../${{ github.base_ref }}""
