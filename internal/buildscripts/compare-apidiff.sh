@@ -51,7 +51,7 @@ changes_found() {
 
 set -e
 
-run pwd
+echo $pwd
 echo $pkg_dir
 echo $pkg_dir/$package
 
