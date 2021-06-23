@@ -30,7 +30,7 @@ while getopts "cp:d:i:" o; do
             input_dir=$OPTARG
             ;;
         i)
-          pkg_dir=$OPTARG
+            pkg_dir=$OPTARG
             ;;
         *)
             usage
