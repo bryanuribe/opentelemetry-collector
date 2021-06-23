@@ -55,7 +55,7 @@ echo $PWD
 echo $pkg_dir
 echo $pkg_dir/$package
 
-if [ -d $input_dir/$package ] || [ -d $pkg_dir/$package ]; then
+if [ -d $input_dir/$package ] && [ -d $pkg_dir/$package ]; then
   echo "here"
   changes=$(apidiff $input_dir/$package/apidiff.state $pkg_dir/$package)
   if [ ! -z "$changes" -a "$changes"!=" " ]; then
