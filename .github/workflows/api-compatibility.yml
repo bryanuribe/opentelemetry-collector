@@ -1,4 +1,4 @@
-# This GitHub action
+# This GitHub action will fail
 #
 #
 name: "Inform Incompatible PRs"
