@@ -51,6 +51,8 @@ changes_found() {
 
 set -e
 
+echo $pkg_dir/$package
+
 if [ -d $input_dir/$package ] || [ -d $pkg_dir/$package ]; then
   echo "here"
   changes=$(apidiff $input_dir/$package/apidiff.state $pkg_dir/$package)
