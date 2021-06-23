@@ -21,6 +21,11 @@ jobs:
         uses: actions/checkout@v2 
         with: 
           path: ${{ github.head_ref }}
+      
+      - name: Setup Go Environment
+        run: |
+          echo "GOPATH=$(go env GOPATH)" >> $GITHUB_ENV
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Install-Tools
         run: |
@@ -30,21 +35,15 @@ jobs:
       - name: Generate-apidiff-States
         run: |
           cd ${{ github.head_ref }}
-          export GOPATH=$HOME/go
-          export PATH=$GOPATH/bin:$PATH
           make apidiff-build
       
       - name: Compare-apidiff-States
         run: |
           cd ${{ github.head_ref }}
-          export GOPATH=$HOME/go
-          export PATH=$GOPATH/bin:$PATH
           make apidiff-compare-GA pkg_dir="../${{ github.base_ref }}/" input_dir="./internal/data/apidiff"
       
       # Fail GitHub Action if there are incompatible changes
       - name: Check-apidiff-States
         run: |
           cd ${{ github.head_ref }}
-          export GOPATH=$HOME/go
-          export PATH=$GOPATH/bin:$PATH
           make apidiff-check pkg_dir="../${{ github.base_ref }}/" input_dir="./internal/data/apidiff"
