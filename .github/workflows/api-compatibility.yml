@@ -28,10 +28,10 @@ jobs:
           make install-tools 
 
       - name: Set-Environment
-          run: |
-            cd ${{ github.head_ref }}
-            export GOPATH=$HOME/go
-            export PATH=$GOPATH/bin:$PATH
+        run: |
+          cd ${{ github.head_ref }}
+          export GOPATH=$HOME/go
+          export PATH=$GOPATH/bin:$PATH
         
       - name: Generate-Compare-Check-apidiff
         run: |
