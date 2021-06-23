@@ -34,6 +34,8 @@ while getopts "cp:d:" o; do
 done
 shift $((OPTIND-1))
 
+echo $package
+
 if [ -z $package ]; then
   usage
 fi
