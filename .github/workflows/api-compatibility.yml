@@ -32,18 +32,20 @@ jobs:
           cd ${{ github.head_ref }}
           make install-tools 
         
+      # Generate apidiff states of PR
       - name: Generate-apidiff-States
         run: |
           cd ${{ github.head_ref }}
           make apidiff-build
       
+      # Compare apidiff states of PR to main
       - name: Compare-apidiff-States
         run: |
           cd ${{ github.head_ref }}
-          make apidiff-compare-GA pkg_dir="../${{ github.base_ref }}/" input_dir="./internal/data/apidiff"
+          make apidiff-compare-GA pkg_dir="../${{ github.base_ref }}" input_dir="./internal/data/apidiff"
       
       # Fail GitHub Action if there are incompatible changes
       - name: Check-apidiff-States
         run: |
           cd ${{ github.head_ref }}
-          make apidiff-check pkg_dir="../${{ github.base_ref }}/" input_dir="./internal/data/apidiff"
+          make apidiff-check pkg_dir="../${{ github.base_ref }}" input_dir="./internal/data/apidiff"
