@@ -1,3 +1,6 @@
+#
+#
+#
 name: "Inform Incompatible PRs"
 on:
   pull_request:
@@ -26,19 +29,23 @@ jobs:
         
       - name: Generate-Compare-Check-apidiff
         run: |
-          echo ::group::Generating apidiff states
+
+          # Set environment
           cd ${{ github.head_ref }}
           export GOPATH=$HOME/go
           export PATH=$GOPATH/bin:$PATH
+
+          # Generate apidiff states of PR
+          echo ::group::Generating apidiff states
           make apidiff-build
-          mkdir test
-          cd ../${{ github.base_ref }}
           echo ::endgroup::
           
+          # Compare apidiff states of PR to main
           echo ::group::Comparing apidiff states
-          make apidiff-compare-GA input_dir="../${{ github.head_ref }}/internal/data/apidiff"
+          make apidiff-compare-GA pkg_dir="../${{ github.base_ref }}" input_dir="./internal/data/apidiff"
           echo ::endgroup::
 
+          # Fail Github Action if there are incompatible changes
           echo ::group::Checking incompatible apis
-          make apidiff-check input_dir="../${{ github.head_ref }}/internal/data/apidiff"
+          make apidiff-check pkg_dir="../${{ github.base_ref }}" input_dir="./internal/data/apidiff"
           echo ::endgroup::
