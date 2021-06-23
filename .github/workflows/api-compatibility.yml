@@ -42,10 +42,10 @@ jobs:
           
           # Compare apidiff states of PR to main
           echo ::group::Comparing apidiff states
-          make apidiff-compare-GA pkg_dir="../${{ github.base_ref }}" input_dir="./internal/data/apidiff"
+          make apidiff-compare-GA pkg_dir="../${{ github.base_ref }}/" input_dir="./internal/data/apidiff"
           echo ::endgroup::
 
           # Fail GitHub Action if there are incompatible changes
           echo ::group::Checking incompatible apis
-          make apidiff-check pkg_dir="../${{ github.base_ref }}" input_dir="./internal/data/apidiff"
+          make apidiff-check pkg_dir="../${{ github.base_ref }}/" input_dir="./internal/data/apidiff"
           echo ::endgroup::
