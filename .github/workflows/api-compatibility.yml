@@ -24,7 +24,7 @@ jobs:
 
       - name: Install-Tools
         run: |
-          cd ${{ github.base_ref }}
+          cd ${{ github.head_ref }}
           make install-tools 
 
       - name: Set-Environment
@@ -33,20 +33,18 @@ jobs:
           export GOPATH=$HOME/go
           export PATH=$GOPATH/bin:$PATH
         
-      - name: Generate-Compare-Check-apidiff
+      - name: Generate-apidiff-States
         run: |
-
-          # Generate apidiff states of PR
-          echo ::group::Generating apidiff states
+          cd ${{ github.head_ref }}
           make apidiff-build
-          echo ::endgroup::
-          
-          # Compare apidiff states of PR to main
-          echo ::group::Comparing apidiff states
+      
+      - name: Compare-apidiff-States
+        run: |
+          cd ${{ github.head_ref }}
           make apidiff-compare-GA pkg_dir="../${{ github.base_ref }}/" input_dir="./internal/data/apidiff"
-          echo ::endgroup::
-
-          # Fail GitHub Action if there are incompatible changes
-          echo ::group::Checking incompatible apis
+      
+      # Fail GitHub Action if there are incompatible changes
+      - name: Check-apidiff-States
+        run: |
+          cd ${{ github.head_ref }}
           make apidiff-check pkg_dir="../${{ github.base_ref }}/" input_dir="./internal/data/apidiff"
-          echo ::endgroup::
