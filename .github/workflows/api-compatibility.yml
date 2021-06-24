@@ -48,10 +48,10 @@ jobs:
       - name: Compare-apidiff-States
         run: |
           cd ${{ github.head_ref }}
-          make apidiff-compare-GA pkg_dir="../${{ github.base_ref }}"
+          make apidiff-compare-GA old_dir="../${{ github.base_ref }}/internal/data/apidiff"
       
       # Fail GitHub Action if there are incompatible changes
       - name: Check-apidiff-States
         run: |
           cd ${{ github.head_ref }}
-          make apidiff-check pkg_dir="../${{ github.base_ref }}"
+          make apidiff-check old_dir="../${{ github.base_ref }}/internal/data/apidiff"

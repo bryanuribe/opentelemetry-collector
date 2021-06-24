@@ -12,9 +12,15 @@ usage() {
   exit 1
 }
 
+changes_found() {
+  echo "Incompatible Changes Found."
+  echo "Check the logs in the Github Action log-group: 'Comparing apidiff states'."
+  exit 1
+}
+
 package=""
-pkg_dir=""
-input_dir="./internal/data/apidiff"
+old_dir="./internal/data/apidiff"
+new_dir="./internal/data/apidiff"
 check_only=false
 
 
@@ -27,10 +33,10 @@ while getopts "cp:d:i:" o; do
             package=$OPTARG
             ;;
         d)
-            input_dir=$OPTARG
+            old_dir=$OPTARG
             ;;
         i)
-            pkg_dir=$OPTARG
+            new_dir=$OPTARG
             ;;
         *)
             usage
@@ -43,22 +49,14 @@ if [ -z $package ]; then
   usage
 fi
 
-changes_found() {
-  echo "Incompatible Changes Found."
-  echo "Check the logs in the Github Action log-group: 'Comparing apidiff states'."
-  exit 1
-}
-
 set -e
 
-echo $PWD
-echo $input_dir
-echo $pkg_dir/$input_dir/$package
-echo $input_dir/$package
+echo $old_dir/$package
+echo $new_dir/$package
 
-if [ -d $input_dir/$package ] && [ -d $pkg_dir/$input_dir/$package ]; then
+if [ -d $old_dir/$package ] && [ -d $new_dir/$package ]; then
   echo "here"
-  changes=$(apidiff $input_dir/$package/apidiff.state $pkg_dir/$input_dir/$package/apidiff.state)
+  changes=$(apidiff $old_dir/$package/apidiff.state $new_dir/$package/apidiff.state)
   echo $changes
   if [ ! -z "$changes" -a "$changes"!=" " ]; then
     SUB='Incompatible changes:'
