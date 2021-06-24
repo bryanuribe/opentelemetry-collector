@@ -46,7 +46,7 @@ changes_found() {
 
 set -e
 
-if [ -f $input_dir/$package/apidiff.state ]; then
+if [ -e $input_dir/$package/apidiff.state ]; then
   changes=$(apidiff $input_dir/$package/apidiff.state $package)
   if [ ! -z "$changes" -a "$changes"!=" " ]; then
     SUB='Incompatible changes:'
