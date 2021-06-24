@@ -40,7 +40,7 @@ jobs:
           pwd
           cd ${{ github.head_ref }}
           pwd
-          make apidiff-build-GA pkg_dir="../${{ github.base_ref }}"
+          make apidiff-build-GA input_dir="../${{ github.base_ref }}/internal/data/apidiff"
         
       # Generate apidiff states of PR
       - name: Generate-apidiff-States
@@ -48,7 +48,7 @@ jobs:
           pwd
           cd ${{ github.head_ref }}
           pwd
-          make apidiff-build-GA pkg_dir="../${{ github.head_ref }}"
+          make apidiff-build
  
       # Compare apidiff states of PR to Main
       - name: Compare-apidiff-States
