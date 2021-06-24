@@ -52,8 +52,8 @@ changes_found() {
 set -e
 
 echo $PWD
-echo $pkg_dir
-echo $pkg_dir/$package
+echo $input_dir
+echo $pkg_dir/$input_dir/$package
 echo $input_dir/$package
 
 if [ -d $input_dir/$package ] && [ -d $pkg_dir/$input_dir/$package ]; then
