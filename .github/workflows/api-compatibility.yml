@@ -1,0 +1,57 @@
+# This GitHub action will fail
+#
+#
+name: "Inform Incompatible PRs"
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  Check-Compatibility:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout-Main
+        uses: actions/checkout@v2
+        with: 
+          ref: ${{ github.base_ref }}
+          path: ${{ github.base_ref }}
+
+      - name: Checkout-HEAD
+        uses: actions/checkout@v2 
+        with: 
+          path: ${{ github.head_ref }}
+      
+      - name: Setup Go Environment
+        run: |
+          echo "GOPATH=$(go env GOPATH)" >> $GITHUB_ENV
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Install-Tools
+        run: |
+          cd ${{ github.head_ref }}
+          make install-tools 
+
+      # Generate apidiff states of Main
+      - name: Generate-apidiff-States
+        run: |
+          cd ${{ github.base_ref }}
+          make apidiff-build
+        
+      # Generate apidiff states of PR
+      - name: Generate-apidiff-States
+        run: |
+          cd ${{ github.head_ref }}
+          make apidiff-build
+ 
+      # Compare apidiff states of PR to Main
+      - name: Compare-apidiff-States
+        run: |
+          cd ${{ github.head_ref }}
+          make apidiff-compare-GA old_dir="../${{ github.base_ref }}/internal/data/apidiff"
+      
+      # Fail GitHub Action if there are incompatible changes
+      - name: Check-apidiff-States
+        run: |
+          cd ${{ github.head_ref }}
+          make apidiff-check old_dir="../${{ github.base_ref }}/internal/data/apidiff"
