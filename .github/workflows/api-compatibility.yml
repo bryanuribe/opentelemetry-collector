@@ -26,8 +26,6 @@ jobs:
         run: |
           echo "GOPATH=$(go env GOPATH)" >> $GITHUB_ENV
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          export GOPATH=$HOME/go
-          export PATH=$GOPATH/bin:$PATH
 
       - name: Install-Tools
         run: |
@@ -37,25 +35,19 @@ jobs:
       # Generate apidiff states of Main
       - name: Generate-apidiff-States
         run: |
-          pwd
           cd ${{ github.base_ref }}
-          pwd
           make apidiff-build
         
       # Generate apidiff states of PR
       - name: Generate-apidiff-States
         run: |
-          pwd
           cd ${{ github.head_ref }}
-          pwd
           make apidiff-build
  
       # Compare apidiff states of PR to Main
       - name: Compare-apidiff-States
         run: |
-          pwd
           cd ${{ github.head_ref }}
-          pwd
           make apidiff-compare-GA pkg_dir="../${{ github.base_ref }}"
       
       # Fail GitHub Action if there are incompatible changes
