@@ -56,7 +56,7 @@ echo $new_dir/$package
 
 if [ -d $old_dir/$package ] && [ -d $new_dir/$package ]; then
   echo "directories exist"
-  changes=$(apidiff $old_dir/$package/apidiff.state $new_dir/$package/apidiff.state)
+  changes=$(apidiff $old_dir/$package $new_dir/$package)
   echo "states exist"
   if [ ! -z "$changes" -a "$changes"!=" " ]; then
     SUB='Incompatible changes:'
