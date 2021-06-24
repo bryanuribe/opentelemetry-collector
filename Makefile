@@ -389,17 +389,23 @@ checkdoc:
 apidiff-build:
 	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/gen-apidiff.sh -p $(pkg)))
 
+# Construct API state snapshots in Github Actions
+.PHONY: apidiff-build-GA
+apidiff-build-GA:
+	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) -i $(pkg_dir)))
+
 # Compare API state snapshots
 .PHONY: apidiff-compare
 apidiff-compare:
 	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg)))
 
+
 # Compare API state snapshots in Github Actions
 .PHONY: apidiff-compare-GA
 apidiff-compare-GA:
-	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) -i $(pkg_dir)))
+	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) -d "$(input_dir)/internal/data/apidiff" -i "$(pkg_dir)/internal/data/apidiff"))
 
 # Check no incompatible APIs for Github Actions
 .PHONY: apidiff-check
 apidiff-check:
-	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) -c -i $(pkg_dir)))
+	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) -c -d "$(input_dir)/internal/data/apidiff" -i "$(pkg_dir)/internal/data/apidiff"))

@@ -13,6 +13,7 @@ usage() {
 
 dry_run=false
 package=""
+pkg_dir=""
 output_dir="./internal/data/apidiff"
 
 
@@ -26,6 +27,9 @@ while getopts "dp:o:" o; do
             ;;
         o)
             output_dir=$OPTARG
+            ;;
+        i)
+            pkg_dir=$OPTARG
             ;;
         *)
             usage
@@ -59,7 +63,7 @@ apidiff -w $tmp_dir/$package/apidiff.state $package
 
 # Copy files if not in dry-run mode.
 if [ $dry_run = false ]; then
-  mkdir -p "$output_dir/$package" && \
+  mkdir -p "$pkg_dir/$output_dir/$package" && \
   cp "$tmp_dir/$package/apidiff.state" \
-     "$output_dir/$package"
+     "$pkg_dir/$output_dir/$package"
 fi

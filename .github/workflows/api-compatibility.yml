@@ -33,6 +33,14 @@ jobs:
         run: |
           cd ${{ github.head_ref }}
           make install-tools 
+
+      # Generate apidiff states of Main
+      - name: Generate-apidiff-States
+        run: |
+          pwd
+          cd ${{ github.head_ref }}
+          pwd
+          make apidiff-build-GA pkg_dir="../${{ github.base_ref }}"
         
       # Generate apidiff states of PR
       - name: Generate-apidiff-States
@@ -40,15 +48,9 @@ jobs:
           pwd
           cd ${{ github.head_ref }}
           pwd
-          make apidiff-build
-      
-      - name: test
-        run: | 
-          export GOPATH=$HOME/go
-          export PATH=$GOPATH/bin:$PATH
-          apidiff ${{ github.head_ref }}/go.opentelemetry.io/collector/client ${{ github.base_ref }}/go.opentelemetry.io/collector/client
-      
-      # Compare apidiff states of PR to main
+          make apidiff-build-GA pkg_dir="../${{ github.head_ref }}"
+ 
+      # Compare apidiff states of PR to Main
       - name: Compare-apidiff-States
         run: |
           pwd
