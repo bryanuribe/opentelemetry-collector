@@ -38,6 +38,8 @@ if [ -z $package ]; then
   usage
 fi
 
+echo $package
+
 set -ex
 
 # Create temp dir for generated files.

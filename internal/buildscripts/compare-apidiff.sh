@@ -59,6 +59,7 @@ echo $input_dir/$package
 if [ -d $input_dir/$package ] && [ -d $pkg_dir/$input_dir/$package ]; then
   echo "here"
   changes=$(apidiff $input_dir/$package/apidiff.state $pkg_dir/$input_dir/$package/apidiff.state)
+  echo $changes
   if [ ! -z "$changes" -a "$changes"!=" " ]; then
     SUB='Incompatible changes:'
     if [ $check_only = true ] && [[ "$changes" =~ .*"$SUB".* ]]; then
