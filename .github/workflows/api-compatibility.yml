@@ -53,7 +53,5 @@ jobs:
       # Fail GitHub Action if there are incompatible changes
       - name: Check-apidiff-States
         run: |
-          pwd
           cd ${{ github.head_ref }}
-          pwd
           make apidiff-check pkg_dir="../${{ github.base_ref }}"
