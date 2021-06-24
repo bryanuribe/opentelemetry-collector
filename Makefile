@@ -392,7 +392,7 @@ apidiff-build:
 # Construct API state snapshots in Github Actions
 .PHONY: apidiff-build-GA
 apidiff-build-GA:
-	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/gen-apidiff.sh -p $(pkg) -o $(output_dir)))
+	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/gen-apidiff.sh -p $(pkg) -o $(output_dir) -i $(pkg_dir)))
 
 # Compare API state snapshots
 .PHONY: apidiff-compare
