@@ -8,23 +8,15 @@ usage() {
   echo "-c  Check-incompatibility mode. Script will fail if an incompatible change is found. Default: 'false'"
   echo "-p  Package to generate API state snapshot of. Default: ''"
   echo "-d  directory where prior states will be read from. Default: './internal/data/apidiff'"
-  echo "-i  directory where comparison package is located. Default: ''"
-  exit 1
-}
-
-changes_found() {
-  echo "Incompatible Changes Found."
-  echo "Check the logs in the Github Action log-group: 'Comparing apidiff states'."
   exit 1
 }
 
 package=""
-old_dir="./internal/data/apidiff"
-new_dir="./internal/data/apidiff"
+input_dir="./internal/data/apidiff"
 check_only=false
 
 
-while getopts "cp:d:i:" o; do
+while getopts "cp:d:" o; do
     case "${o}" in
         c) 
             check_only=true
@@ -33,10 +25,7 @@ while getopts "cp:d:i:" o; do
             package=$OPTARG
             ;;
         d)
-            old_dir=$OPTARG
-            ;;
-        i)
-            new_dir=$OPTARG
+            input_dir=$OPTARG
             ;;
         *)
             usage
@@ -49,15 +38,16 @@ if [ -z $package ]; then
   usage
 fi
 
+changes_found() {
+  echo "Incompatible Changes Found."
+  echo "Check the logs in the GitHub Action log-group: 'Comparing apidiff states'."
+  exit 1
+}
+
 set -e
 
-echo $old_dir/$package
-echo $new_dir/$package
-
-if [ -e $old_dir/$package/apidiff.state ] && [ -e $new_dir/$package/apidiff.state ]; then
-  echo "directories exist"
-  changes=$(apidiff $old_dir/$package/apidiff.state $new_dir/$package/apidiff.state)
-  echo "states exist"
+if [ -d $input_dir/$package ]; then
+  changes=$(apidiff $input_dir/$package/apidiff.state $package)
   if [ ! -z "$changes" -a "$changes"!=" " ]; then
     SUB='Incompatible changes:'
     if [ $check_only = true ] && [[ "$changes" =~ .*"$SUB".* ]]; then

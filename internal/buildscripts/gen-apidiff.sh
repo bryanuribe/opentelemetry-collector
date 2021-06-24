@@ -15,7 +15,8 @@ dry_run=false
 package=""
 output_dir="./internal/data/apidiff"
 
-while getopts "dp:o:i:" o; do
+
+while getopts "dp:o:" o; do
     case "${o}" in
         d)
             dry_run=true
@@ -36,8 +37,6 @@ shift $((OPTIND-1))
 if [ -z $package ]; then
   usage
 fi
-
-echo $package
 
 set -ex
 
