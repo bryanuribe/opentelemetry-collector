@@ -54,7 +54,7 @@ set -e
 echo $old_dir/$package
 echo $new_dir/$package
 
-if [ -d $old_dir/$package ] && [ -d $new_dir/$package ]; then
+if [ -d $old_dir/$package/apidiff.state ] && [ -d $new_dir/$package/apidiff.state ]; then
   echo "here"
   changes=$(apidiff $old_dir/$package/apidiff.state $new_dir/$package/apidiff.state)
   echo $changes
