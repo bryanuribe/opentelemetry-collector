@@ -387,17 +387,23 @@ checkdoc:
 apidiff-build:
 	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/gen-apidiff.sh -p $(pkg)))
 
+# If we are running in CI, run apidiff-compare with an input_dir
+ifeq (,$(CI))
+APICOMPARE_OPTS=-d "./internal/data/apidiff"
+else
+APICOMPARE_OPTS=-d "./internal/data/apidiff"
+endif
+
+print-%  : ; @echo $* = $($*)
+
+make print-$(CI)
+
 # Compare API state snapshots
 .PHONY: apidiff-compare
 apidiff-compare:
-	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg)))
-
-# Compare API state snapshots in GitHub Actions
-.PHONY: apidiff-compare-GA
-apidiff-compare-GA:
-	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) -d $(input_dir)))
+	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) $(APICOMPARE_OPTS)))
 
 # Check for incompatible API changes in GitHub Actions
 .PHONY: apidiff-check
 apidiff-check:
-	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) -d $(input_dir) -c))
+	@$(foreach pkg,$(ALL_PKGS),$(call exec-command,./internal/buildscripts/compare-apidiff.sh -p $(pkg) -d $(INPUT_DIR) -c))

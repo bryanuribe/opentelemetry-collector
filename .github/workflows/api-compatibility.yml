@@ -5,7 +5,6 @@ on:
       - main
 
 jobs:
-
   Check-Compatibility:
     runs-on: macos-latest
     steps:
@@ -41,10 +40,10 @@ jobs:
       - name: Compare-apidiff-States
         run: |
           cd ${{ github.head_ref }}
-          make apidiff-compare-GA input_dir="../${{ github.base_ref }}/internal/data/apidiff"
+          make apidiff-compare APICOMPARE_OPTS="../${{ github.base_ref }}/internal/data/apidiff"
       
       # Fail GitHub Action if there are incompatible changes
       - name: Check-apidiff-States
         run: |
           cd ${{ github.head_ref }}
-          make apidiff-check input_dir="../${{ github.base_ref }}/internal/data/apidiff"
+          make apidiff-compare APICOMPARE_OPTS="../${{ github.base_ref }}/internal/data/apidiff"
