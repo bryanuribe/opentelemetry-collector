@@ -38,12 +38,18 @@ jobs:
       
       # Generate apidiff states of PR
       - name: Compare-apidiff-States
+        env: 
+          CI: true
+          COMPARE_OPTS: -d "../${{ github.base_ref }}/internal/data/apidiff"
         run: |
           cd ${{ github.head_ref }}
-          make apidiff-compare APICOMPARE_OPTS="../${{ github.base_ref }}/internal/data/apidiff"
+          make apidiff-compare
       
       # Fail GitHub Action if there are incompatible changes
       - name: Check-apidiff-States
+        env: 
+          CI: true
+          COMPARE_OPTS: -d "../${{ github.base_ref }}/internal/data/apidiff" -c
         run: |
           cd ${{ github.head_ref }}
-          make apidiff-compare APICOMPARE_OPTS="../${{ github.base_ref }}/internal/data/apidiff"
+          make apidiff-compare
