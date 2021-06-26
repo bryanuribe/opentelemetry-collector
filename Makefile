@@ -389,7 +389,7 @@ apidiff-build:
 
 # If we are running in CI, change input directory
 ifeq ($(CI), true)
-APICOMPARE_OPTS=COMPARE_OPTS
+APICOMPARE_OPTS=$(COMPARE_OPTS)
 else
 APICOMPARE_OPTS=-d "./internal/data/apidiff"
 endif
